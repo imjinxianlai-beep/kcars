@@ -29,11 +29,11 @@ export default function App() {
   return (
     <div className="app-shell">
       {/* Top Bar */}
-      <div className="topbar">
+      <div className="topbar" style={{ background:'#fff', borderBottom:'2px solid #f0f0f0' }}>
         <div style={{ display:'flex', alignItems:'center', gap:16 }}>
           <div className="topbar-title">
-            <img src="/logo.jpg" alt="K-Cars Auto Centre"
-              style={{ height:32, width:'auto', objectFit:'contain', filter:'brightness(0) invert(1)' }} />
+            <img src="/logo.png" alt="K-Cars Auto Centre"
+              style={{ height:36, width:'auto', objectFit:'contain', borderRadius:4 }} />
             <span className="topbar-badge">Singapore</span>
           </div>
           {/* Nav tabs */}
@@ -44,8 +44,8 @@ export default function App() {
             ].map(t => (
               <button key={t.key} onClick={() => setPage(t.key)}
                 style={{
-                  background: page===t.key ? 'var(--orange)' : 'transparent',
-                  color: page===t.key ? '#fff' : '#aaa',
+                  background: page===t.key ? 'var(--orange)' : '#f5f5f5',
+                  color: page===t.key ? '#fff' : '#555',
                   border: 'none', borderRadius:6,
                   padding:'5px 12px', fontSize:12, fontWeight:600,
                   cursor:'pointer', transition:'.15s'
@@ -55,9 +55,9 @@ export default function App() {
             ))}
           </div>
         </div>
-        <div style={{ fontSize:12, color:'#aaa', display:'flex', alignItems:'center', gap:10 }}>
+        <div style={{ fontSize:12, color:'#666', display:'flex', alignItems:'center', gap:10 }}>
           <span>{session.user.email}</span>
-          <button className="btn btn-ghost" style={{ color:'#aaa', fontSize:11 }}
+          <button className="btn btn-ghost" style={{ color:'#888', fontSize:11 }}
             onClick={() => supabase.auth.signOut()}>Sign Out</button>
         </div>
       </div>
