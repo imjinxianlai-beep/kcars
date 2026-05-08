@@ -5,24 +5,40 @@ const CO = {
   kc: {
     name:    'K-CARS AUTO CENTRE PTE LTD',
     addr:    '1 Kaki Bukit Road 1,#04-31 Enterprise One, Singapore 415934',
-    tel:     'Tel: 6289 1111',
-    fax:     'Fax: 6281 5008',
+    telFax:  'Tel: 6289 1111                    Fax: 6281 5008',
     reg:     'Co. Reg No. : 201104963M',
-    bank:    'OCBC A/C 687-699-181-001',
-    paynow:  '201104963MP01',
     hasLogo: true,
     totalLabel: 'Total',
+    notes: [
+      'Notes :',
+      '1. Goods sold are not Refundable / Returnable.',
+      '2. Price Inclusive of Trade In.',
+      '3. Payment Mode :',
+      '   A:- Cheque.:  K-CARS AUTO CENTRE PTE LTD',
+      '   B:- Bank Tranfer.:  OCBC A/C 687-699-181-001',
+      '   C:- PayNow.:  UEN 201104963MP01',
+      '   *Please send the Payment Advice via Whatsapp to',
+      '    +65-8787 5151 after tranfer done.',
+    ],
   },
   onew: {
     name:    '1 WORLD AUTO EXPORT PTE LTD',
     addr:    '1 Kaki Bukit Road 1,#04-31 Enterprise One, Singapore 415934',
-    tel:     'Tel: 6482 1855 (Sales) 6289 1111 (General)',
-    fax:     'Fax: 6281 5008',
+    tel:     'Tel: 6482 1855 (Sales)     6289 1111 (General)     Fax: 6281 5008',
     reg:     'Co. Reg No.: 201106739D',
-    bank:    'OCBC A/C 601-350481-001',
-    paynow:  '201106739D',
     hasLogo: false,
     totalLabel: 'Sub Total',
+    notes: [
+      '1 WORLD AUTO EXPORT PTE LTD',
+      'Notes :',
+      '1. Goods sold are not Refundable / Returnable.',
+      '2. Payment Mode :',
+      '   A:- Cheque.: ',
+      '   B:- Bank Tranfer.:  OCBC A/C 601-350481-001',
+      '   C:- PayNow.:  UEN 201106739D',
+      '   *Please send the Payment Advice via Whatsapp to',
+      '    +65-8787 5151 after tranfer done.',
+    ],
   },
 }
 
@@ -67,13 +83,10 @@ function toWords(n) {
 }
 
 function getTech(invoice) {
-  // New format: advisor + mechanic fields
   if (invoice.advisor || invoice.mechanic) {
     return { adv: invoice.advisor||'', mec: invoice.mechanic||'' }
   }
-  // Old format: single technician field → goes to Mechanic
-  const tech = (invoice.technician||'').trim()
-  return { adv: '', mec: tech }
+  return { adv: '', mec: (invoice.technician||'').trim() }
 }
 
 export function generateInvoicePDF(invoice, customer, items, invoiceType) {
@@ -87,73 +100,85 @@ export function generateInvoicePDF(invoice, customer, items, invoiceType) {
 
   // ── HEADER ─────────────────────────────────────────────────────────
   if (co.hasLogo) {
-    // K-Cars: logo left + company name bold italic right, full width
+    // K-Cars: logo on left (big, no distortion), company name+info on right
+    const logoW = 50, logoH = 26, logoX = M, logoY = y
     try {
       const imgEl = document.querySelector('img[alt="K-Cars Auto Centre"]')
       if (imgEl) {
+        // Calculate aspect ratio to avoid distortion
+        const ratio = imgEl.naturalWidth / imgEl.naturalHeight
+        const fitH = logoH
+        const fitW = fitH * ratio
         const cv = document.createElement('canvas')
         cv.width = imgEl.naturalWidth; cv.height = imgEl.naturalHeight
         cv.getContext('2d').drawImage(imgEl, 0, 0)
-        doc.addImage(cv.toDataURL('image/png'), 'PNG', M, y+2, 44, 22)
+        doc.addImage(cv.toDataURL('image/png'), 'PNG', logoX, logoY, fitW > logoW ? logoW : fitW, fitH)
       }
     } catch(e) {}
-    doc.setFont('helvetica','bolditalic').setFontSize(19).setTextColor(20)
-    doc.text(co.name, W-M, y+8, {align:'right'})
+
+    // Company name: large bold italic, right-aligned
+    doc.setFont('helvetica','bolditalic').setFontSize(20).setTextColor(20)
+    doc.text(co.name, W-M, y+9, {align:'right'})
     doc.setFont('helvetica','normal').setFontSize(8.5).setTextColor(50)
-    doc.text(co.addr, W-M, y+14, {align:'right'})
-    doc.text(co.tel+'          '+co.fax, W-M, y+19, {align:'right'})
-    doc.text(co.reg, W-M, y+24, {align:'right'})
-    y += 30
+    doc.text(co.addr,    W-M, y+15, {align:'right'})
+    doc.text(co.telFax,  W-M, y+20, {align:'right'})
+    doc.text(co.reg,     W-M, y+25, {align:'right'})
+    y += 32
+
   } else {
-    // 1 World: no logo, all text
-    doc.setFont('helvetica','bold').setFontSize(13).setTextColor(20)
-    doc.text(co.name, W/2, y+6, {align:'center'})
-    doc.setFont('helvetica','normal').setFontSize(8.5).setTextColor(50)
-    doc.text(co.addr, W/2, y+11, {align:'center'})
-    doc.text(co.tel+' '+co.fax, W/2, y+16, {align:'center'})
-    doc.text(co.reg, W/2, y+21, {align:'center'})
-    y += 27
+    // 1 World: NO logo. Big bold italic company name centered, info below
+    doc.setFont('helvetica','bolditalic').setFontSize(22).setTextColor(20)
+    doc.text(co.name, W/2, y+10, {align:'center'})
+    doc.setFont('helvetica','normal').setFontSize(9).setTextColor(50)
+    doc.text(co.addr, W/2, y+17, {align:'center'})
+    doc.text(co.tel,  W/2, y+22, {align:'center'})
+    doc.text(co.reg,  W/2, y+27, {align:'center'})
+    y += 33
   }
 
   // Divider
-  doc.setDrawColor(80).setLineWidth(0.6)
+  doc.setDrawColor(60).setLineWidth(0.6)
   doc.line(M, y, W-M, y)
-  y += 5
+  y += 6
 
   // ── INVOICE title + No. ───────────────────────────────────────────
-  doc.setFont('helvetica','bold').setFontSize(14).setTextColor(20)
+  doc.setFont('helvetica','bold').setFontSize(15).setTextColor(20)
   doc.text('INVOICE', W/2, y+5, {align:'center'})
   doc.setFontSize(10)
   doc.text('No.  :  '+(invoice.invoice_no||''), W-M, y+5, {align:'right'})
-  y += 10
+  y += 11
 
-  // ── CUSTOMER (left boxes) + VEHICLE INFO (right) ──────────────────
-  const boxW=85, lh=6.5
-  const rightX=M+boxW+4, valX=rightX+25
+  // ── CUSTOMER (left) + VEHICLE (right) ─────────────────────────────
+  const boxW=85, lh=7
+  const rightX=M+boxW+4, valX=rightX+26
   const { adv, mec } = getTech(invoice)
 
-  // 4 left boxes
+  // Draw 4 boxes
   for (let i=0; i<4; i++) {
-    doc.setDrawColor(120).setLineWidth(0.25)
+    doc.setDrawColor(120).setLineWidth(0.3)
     doc.rect(M, y+i*lh, boxW, lh)
   }
-  // Box 0: Name
-  doc.setFont('helvetica','normal').setFontSize(7.5).setTextColor(80)
-  doc.text('Name :', M+2, y+0*lh+3)
-  doc.setFont('helvetica','bold').setFontSize(9.5).setTextColor(20)
-  doc.text(customer.name||'', M+2, y+0*lh+lh-1.5)
-  // Box 1: Phone
-  doc.setFont('helvetica','normal').setFontSize(7.5).setTextColor(80)
-  doc.text('Number :', M+2, y+1*lh+3)
-  doc.setFont('helvetica','normal').setFontSize(8.5).setTextColor(20)
-  doc.text(customer.phone||'', M+2, y+1*lh+lh-1.5)
-  // Box 2: blank
-  // Box 3: Advisor/Mechanic
-  doc.setFont('helvetica','bold').setFontSize(8.5).setTextColor(20)
-  doc.text('Advisor  : '+adv,  M+2,  y+3*lh+4.5)
-  doc.text('Mechanic  : '+mec, M+46, y+3*lh+4.5)
 
-  // 7 right rows
+  // Box 0: Name label small, name value large below
+  doc.setFont('helvetica','normal').setFontSize(7).setTextColor(100)
+  doc.text('Name :', M+2, y+2.5)
+  doc.setFont('helvetica','bold').setFontSize(10).setTextColor(20)
+  doc.text(customer.name||'', M+2, y+6.2)
+
+  // Box 1: Number label + value
+  doc.setFont('helvetica','normal').setFontSize(7).setTextColor(100)
+  doc.text('Number :', M+2, y+lh+2.5)
+  doc.setFont('helvetica','normal').setFontSize(9).setTextColor(20)
+  doc.text(customer.phone||'', M+2, y+lh+6.2)
+
+  // Box 2: blank (remarks/empty)
+
+  // Box 3: Advisor + Mechanic
+  doc.setFont('helvetica','bold').setFontSize(8.5).setTextColor(20)
+  doc.text('Advisor  : '+adv,  M+2,  y+3*lh+4.8)
+  doc.text('Mechanic  : '+mec, M+44, y+3*lh+4.8)
+
+  // Right side: 7 vehicle info rows
   const vRows = [
     ['Date',        invoice.date||''],
     ['Vehicle No.', customer.car_plate||''],
@@ -164,15 +189,16 @@ export function generateInvoicePDF(invoice, customer, items, invoiceType) {
     ['COE Expire',  invoice.coe_expire||''],
   ]
   vRows.forEach(([label,val],i) => {
+    const ry = y + i*lh
     doc.setFont('helvetica','normal').setFontSize(8.5).setTextColor(60)
-    doc.text(label, rightX, y+i*lh+4.5)
-    doc.text(':', rightX+23, y+i*lh+4.5)
+    doc.text(label, rightX, ry+4.8)
+    doc.text(':', rightX+24, ry+4.8)
     doc.setFont('helvetica','bold').setTextColor(20)
-    doc.text(String(val), valX, y+i*lh+4.5)
+    doc.text(String(val), valX, ry+4.8)
   })
 
-  // Advance past the taller section (7 rows of vehicle info)
-  y += 7*lh + 2
+  // Advance past tallest section (7 vehicle rows)
+  y += 7*lh + 3
 
   // ── ITEMS TABLE ───────────────────────────────────────────────────
   const tableBody = (items||[]).map((it,i) => [
@@ -189,8 +215,8 @@ export function generateInvoicePDF(invoice, customer, items, invoiceType) {
     head: [['Item','Description','Qty','Remarks','U/ Price\nS$','Total\nS$']],
     body: tableBody,
     margin: {left:M, right:M},
-    styles: {fontSize:8.5, cellPadding:{top:2.5,bottom:2.5,left:2,right:2}, textColor:[20,20,20], lineColor:[140,140,140], lineWidth:0.25},
-    headStyles: {fillColor:[255,255,255], textColor:[20,20,20], fontStyle:'normal', fontSize:8.5, lineColor:[140,140,140], lineWidth:0.25},
+    styles: {fontSize:8.5, cellPadding:{top:2.5,bottom:2.5,left:2,right:2}, textColor:[20,20,20], lineColor:[130,130,130], lineWidth:0.25},
+    headStyles: {fillColor:[255,255,255], textColor:[20,20,20], fontStyle:'normal', fontSize:8.5, lineColor:[130,130,130], lineWidth:0.25},
     columnStyles: {
       0:{cellWidth:12, halign:'center'},
       1:{cellWidth:66},
@@ -199,7 +225,7 @@ export function generateInvoicePDF(invoice, customer, items, invoiceType) {
       4:{cellWidth:25, halign:'right'},
       5:{cellWidth:25, halign:'right'},
     },
-    tableLineColor:[140,140,140], tableLineWidth:0.25,
+    tableLineColor:[130,130,130], tableLineWidth:0.25,
   })
 
   y = doc.lastAutoTable.finalY + 5
@@ -215,72 +241,53 @@ export function generateInvoicePDF(invoice, customer, items, invoiceType) {
     y += lines.length*3.5+5
   }
 
-  // ── TOTAL ─────────────────────────────────────────────────────────
+  // ── TOTAL LINE ────────────────────────────────────────────────────
   const total = parseFloat(invoice.total||0)
   doc.setDrawColor(120).setLineWidth(0.3)
   doc.line(M, y, W-M, y)
   y += 5
 
+  // Total in words (left)
   doc.setFont('helvetica','normal').setFontSize(8).setTextColor(30)
   doc.text(toWords(total), M, y+4)
-  // Total label (outside box, left of box)
-  doc.setFont('helvetica','bold').setFontSize(9).setTextColor(20)
-  doc.text(co.totalLabel, W-M-42, y+5)
-  // Total box (just the number)
-  doc.setDrawColor(120).setLineWidth(0.3)
-  doc.rect(W-M-26, y, 26, 7)
-  doc.setFont('helvetica','bold').setFontSize(10).setTextColor(20)
-  doc.text(total.toFixed(2), W-M-1, y+5.3, {align:'right'})
+
+  // Total label + box (right) — label outside box, number inside box
+  doc.setFont('helvetica','bold').setFontSize(9.5).setTextColor(20)
+  doc.text(co.totalLabel, W-M-30, y+5)
+  doc.setDrawColor(120).setLineWidth(0.4)
+  doc.rect(W-M-20, y+0.5, 20, 7)
+  doc.setFont('helvetica','bold').setFontSize(10)
+  doc.text(total.toFixed(2), W-M-1, y+5.5, {align:'right'})
   y += 13
 
-  // ── PAYMENT NOTES + QR CODE ───────────────────────────────────────
-  const noteLines = co.hasLogo ? [
-    'Notes :',
-    '1. Goods sold are not Refundable / Returnable.',
-    '2. Price Inclusive of Trade In.',
-    '3. Payment Mode :',
-    '   A:- Cheque.:  K-CARS AUTO CENTRE PTE LTD',
-    '   B:- Bank Tranfer.:  OCBC A/C 687-699-181-001',
-    '   C:- PayNow.:  UEN 201104963MP01',
-    '   *Please send the Payment Advice via Whatsapp to',
-    '    +65-8787 5151 after tranfer done.',
-  ] : [
-    co.name,
-    'Notes :',
-    '1. Goods sold are not Refundable / Returnable.',
-    '2. Payment Mode :',
-    '   A:- Cheque.: ',
-    '   B:- Bank Tranfer.:  OCBC A/C 601-350481-001',
-    '   C:- PayNow.:  UEN 201106739D',
-    '   *Please send the Payment Advice via Whatsapp to',
-    '    +65-8787 5151 after tranfer done.',
-  ]
+  // ── NOTES + QR ───────────────────────────────────────────────────
+  const boldKeywords = ['K-CARS AUTO CENTRE PTE LTD','1 WORLD AUTO EXPORT PTE LTD',
+    '687-699-181-001','601-350481-001','201104963MP01','201106739D']
 
-  const boldLines = ['K-CARS AUTO CENTRE PTE LTD','1 WORLD AUTO EXPORT PTE LTD','687-699-181-001','601-350481-001','201104963MP01','201106739D']
-  noteLines.forEach((line, i) => {
-    const isBold = boldLines.some(b => line.includes(b))
+  const notesStartY = y
+  co.notes.forEach((line, i) => {
+    const isBold = boldKeywords.some(k => line.includes(k))
     doc.setFont('helvetica', isBold?'bold':'normal').setFontSize(7.5).setTextColor(50)
     doc.text(line, M, y + i*3.6)
   })
 
-  // QR code (K-Cars only) - use real QR image
+  // QR code for K-Cars only
   if (co.hasLogo) {
     try {
-      doc.addImage('data:image/png;base64,'+QR_B64, 'PNG', M+90, y, 28, 28)
-    } catch(e) { console.log('QR err', e) }
+      doc.addImage('data:image/png;base64,'+QR_B64, 'PNG', M+90, notesStartY, 26, 26)
+    } catch(e) {}
   }
 
-  y += noteLines.length * 3.6 + 5
+  y += co.notes.length * 3.6 + 6
 
   // ── FOOTER ────────────────────────────────────────────────────────
-  // Left: computer generated text
   doc.setFont('helvetica','bold').setFontSize(7.5).setTextColor(30)
   doc.text('This is a computer generated invoice. No signature is required', M, y)
 
-  // Right: line FIRST, then text BELOW
-  const sigX = W-M-60
+  // Signature: line first, text below
+  const sigLineX = W-M-62
   doc.setDrawColor(100).setLineWidth(0.3)
-  doc.line(sigX, y, W-M, y)
+  doc.line(sigLineX, y, W-M, y)
   doc.setFont('helvetica','bold').setFontSize(8).setTextColor(20)
   doc.text("Receipient's Signature & Stamp", W-M, y+5, {align:'right'})
 
