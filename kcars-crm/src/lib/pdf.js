@@ -101,18 +101,16 @@ export function generateInvoicePDF(invoice, customer, items, invoiceType) {
   // ── HEADER ─────────────────────────────────────────────────────────
   if (co.hasLogo) {
     // K-Cars: logo on left (big, no distortion), company name+info on right
-    const logoW = 50, logoH = 26, logoX = M, logoY = y
     try {
       const imgEl = document.querySelector('img[alt="K-Cars Auto Centre"]')
       if (imgEl) {
-        // Calculate aspect ratio to avoid distortion
-        const ratio = imgEl.naturalWidth / imgEl.naturalHeight
-        const fitH = logoH
-        const fitW = fitH * ratio
+        const nw = imgEl.naturalWidth, nh = imgEl.naturalHeight
+        const targetH = 28  // fixed height in mm
+        const targetW = targetH * (nw / nh)  // width based on real ratio
         const cv = document.createElement('canvas')
-        cv.width = imgEl.naturalWidth; cv.height = imgEl.naturalHeight
+        cv.width = nw; cv.height = nh
         cv.getContext('2d').drawImage(imgEl, 0, 0)
-        doc.addImage(cv.toDataURL('image/png'), 'PNG', logoX, logoY, fitW > logoW ? logoW : fitW, fitH)
+        doc.addImage(cv.toDataURL('image/png'), 'PNG', M, y, targetW, targetH)
       }
     } catch(e) {}
 
@@ -153,30 +151,26 @@ export function generateInvoicePDF(invoice, customer, items, invoiceType) {
   const rightX=M+boxW+4, valX=rightX+26
   const { adv, mec } = getTech(invoice)
 
-  // Draw 4 boxes
-  for (let i=0; i<4; i++) {
-    doc.setDrawColor(120).setLineWidth(0.3)
-    doc.rect(M, y+i*lh, boxW, lh)
-  }
+  // Plain text - no boxes
+  const textLh = 7
+  // Name
+  doc.setFont('helvetica','normal').setFontSize(9).setTextColor(50)
+  doc.text('Name :', M, y+4)
+  doc.setFont('helvetica','bold').setFontSize(9).setTextColor(20)
+  doc.text(customer.name||'', M+18, y+4)
 
-  // Box 0: Name label small, name value large below
-  doc.setFont('helvetica','normal').setFontSize(7).setTextColor(100)
-  doc.text('Name :', M+2, y+2.5)
-  doc.setFont('helvetica','bold').setFontSize(10).setTextColor(20)
-  doc.text(customer.name||'', M+2, y+6.2)
-
-  // Box 1: Number label + value
-  doc.setFont('helvetica','normal').setFontSize(7).setTextColor(100)
-  doc.text('Number :', M+2, y+lh+2.5)
+  // Number
+  doc.setFont('helvetica','normal').setFontSize(9).setTextColor(50)
+  doc.text('Number :', M, y+textLh+4)
   doc.setFont('helvetica','normal').setFontSize(9).setTextColor(20)
-  doc.text(customer.phone||'', M+2, y+lh+6.2)
+  doc.text(customer.phone||'', M+20, y+textLh+4)
 
-  // Box 2: blank (remarks/empty)
-
-  // Box 3: Advisor + Mechanic
+  // Advisor + Mechanic (same row, with box line only for this row)
+  doc.setDrawColor(120).setLineWidth(0.25)
+  doc.rect(M, y+2*textLh, boxW, 7)
   doc.setFont('helvetica','bold').setFontSize(8.5).setTextColor(20)
-  doc.text('Advisor  : '+adv,  M+2,  y+3*lh+4.8)
-  doc.text('Mechanic  : '+mec, M+44, y+3*lh+4.8)
+  doc.text('Advisor  : '+adv,  M+2,  y+2*textLh+4.8)
+  doc.text('Mechanic  : '+mec, M+44, y+2*textLh+4.8)
 
   // Right side: 7 vehicle info rows
   const vRows = [
@@ -191,14 +185,14 @@ export function generateInvoicePDF(invoice, customer, items, invoiceType) {
   vRows.forEach(([label,val],i) => {
     const ry = y + i*lh
     doc.setFont('helvetica','normal').setFontSize(8.5).setTextColor(60)
-    doc.text(label, rightX, ry+4.8)
-    doc.text(':', rightX+24, ry+4.8)
+    doc.text(label, rightX, ry+5)
+    doc.text(':', rightX+24, ry+5)
     doc.setFont('helvetica','bold').setTextColor(20)
-    doc.text(String(val), valX, ry+4.8)
+    doc.text(String(val), valX, ry+5)
   })
 
-  // Advance past tallest section (7 vehicle rows)
-  y += 7*lh + 3
+  // Advance past tallest section
+  y += Math.max(3*textLh+10, 7*lh) + 3
 
   // ── ITEMS TABLE ───────────────────────────────────────────────────
   const tableBody = (items||[]).map((it,i) => [
