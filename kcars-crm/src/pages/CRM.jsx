@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { supabase, getCustomers, searchCustomers, getInvoices, deleteCustomer,
+import { supabase, getCustomers, getTotalCustomers, searchCustomers, getInvoices, deleteCustomer,
   upsertCustomer, createInvoice, updateInvoice, updateInvoiceStatus,
   deleteInvoice, generateInvoiceNo, getCatalog } from '../lib/supabase'
 import { printInvoice, downloadInvoice } from '../lib/pdf'
@@ -38,9 +38,15 @@ export default function CRM({ session }) {
     return () => sub.unsubscribe()
   }, [])
 
-  const loadCustomers = async () => {
-    const { data } = await getCustomers()
+  const [totalCount, setTotalCount] = useState(0)
+  const [page, setPage] = useState(0)
+  const PAGE_SIZE = 1000
+
+  const loadCustomers = async (p = 0) => {
+    const from = p * PAGE_SIZE
+    const { data, count } = await getCustomers(from, from + PAGE_SIZE - 1)
     setCustomers(data || [])
+    setTotalCount(count || 0)
     setLoading(false)
   }
 
@@ -99,7 +105,7 @@ export default function CRM({ session }) {
       <div className="stats-bar">
         <div className="stat-card">
           <div className="stat-label">Customers 客户</div>
-          <div className="stat-val">{customers.length.toLocaleString()}</div>
+          <div className="stat-val">{(search ? customers.length : totalCount).toLocaleString()}</div>
         </div>
         <div className="stat-card">
           <div className="stat-label">Invoices 发票</div>
@@ -132,7 +138,7 @@ export default function CRM({ session }) {
             </button>
           </div>
           <div className="sidebar-count">
-            {search ? `${customers.length} results` : `${customers.length.toLocaleString()} customers`}
+            {search ? `${customers.length} results` : `Showing ${customers.length.toLocaleString()} of ${totalCount.toLocaleString()} customers`}
           </div>
           <div className="cust-list">
             {loading ? <div className="spinner" /> :

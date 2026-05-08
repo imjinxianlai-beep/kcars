@@ -8,8 +8,12 @@ export const supabase = createClient(supabaseUrl, supabaseKey, {
 })
 
 // ── Customers ──────────────────────────────────────────
-export const getCustomers = () =>
-  supabase.from('customers').select('*').order('updated_at', { ascending: false })
+export const getCustomers = (from = 0, to = 999) =>
+  supabase.from('customers').select('*', { count: 'exact' })
+    .order('updated_at', { ascending: false }).range(from, to)
+
+export const getTotalCustomers = () =>
+  supabase.from('customers').select('*', { count: 'exact', head: true })
 
 export const searchCustomers = (q) =>
   supabase.from('customers').select('*')
