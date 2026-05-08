@@ -26,7 +26,8 @@ export default function Login() {
       }}>
         <div style={{ textAlign: 'center', marginBottom: 28 }}>
           <img src="/logo.jpg" alt="K-Cars Auto Centre"
-            style={{ height: 60, width: 'auto', objectFit: 'contain', marginBottom: 8 }} />
+            style={{ height: 70, width: 'auto', objectFit: 'contain', marginBottom: 12,
+              background:'#fff', borderRadius:8, padding:'6px 12px' }} />
           <div style={{ fontSize: 14, color: '#888', marginTop: 4 }}>CRM System 管理系统</div>
         </div>
 

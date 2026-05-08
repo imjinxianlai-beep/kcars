@@ -89,17 +89,7 @@ export default function CRM({ session }) {
   return (
     <div className="app-shell">
       {/* Top Bar */}
-      <div className="topbar">
-        <div className="topbar-title">
-          🔧 {import.meta.env.VITE_GARAGE_NAME || 'K-Cars Garage'}
-          <span className="topbar-badge">Singapore</span>
-        </div>
-        <div className="topbar-user">
-          <span>{session.user.email}</span>
-          <button className="btn btn-ghost" style={{ color: '#aaa', fontSize: 11 }}
-            onClick={() => supabase.auth.signOut()}>Sign Out</button>
-        </div>
-      </div>
+
 
       {/* Stats Bar */}
       <div className="stats-bar">
