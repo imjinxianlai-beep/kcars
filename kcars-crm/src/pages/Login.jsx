@@ -25,11 +25,9 @@ export default function Login() {
         width: '100%', maxWidth: 380, boxShadow: '0 8px 40px rgba(0,0,0,.4)'
       }}>
         <div style={{ textAlign: 'center', marginBottom: 28 }}>
-          <div style={{ fontSize: 40 }}>🔧</div>
-          <div style={{ fontSize: 22, fontWeight: 800, marginTop: 8 }}>
-            {import.meta.env.VITE_GARAGE_NAME || 'K-Cars Garage'}
-          </div>
-          <div style={{ fontSize: 13, color: '#888', marginTop: 4 }}>CRM System 管理系统</div>
+          <img src="/logo.jpg" alt="K-Cars Auto Centre"
+            style={{ height: 60, width: 'auto', objectFit: 'contain', marginBottom: 8 }} />
+          <div style={{ fontSize: 14, color: '#888', marginTop: 4 }}>CRM System 管理系统</div>
         </div>
 
         <form onSubmit={login}>
