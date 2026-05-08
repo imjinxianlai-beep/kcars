@@ -20,25 +20,34 @@ export default function Reminders() {
 
   async function loadReminders() {
     setLoading(true)
-    // Get all customers with their latest invoice date
+
+    // Get latest invoice date per customer using a direct join query
     const { data, error } = await supabase
-      .from('customers')
-      .select(`id, name, phone, car_plate, car_make, car_model,
-        invoices(date, total, status)`)
-      .order('name')
+      .from('invoices')
+      .select(`date, customer_id, customers(id, name, phone, car_plate, car_make, car_model)`)
+      .not('date', 'is', null)
+      .order('date', { ascending: false })
+      .limit(20000)
 
     if (error) { console.error(error); setLoading(false); return }
+
+    // Group by customer, keep only latest invoice per customer
+    const custMap = {}
+    for (const row of data) {
+      if (!row.customers) continue
+      const cid = row.customer_id
+      if (!custMap[cid]) {
+        custMap[cid] = { ...row.customers, lastDate: row.date }
+      }
+    }
 
     const today = new Date()
     today.setHours(0,0,0,0)
 
     const upcoming = [], overdue = [], recent = []
 
-    for (const c of data) {
-      const invs = (c.invoices || []).filter(i => i.date).sort((a,b) => b.date.localeCompare(a.date))
-      if (!invs.length) continue
-
-      const lastDate = new Date(invs[0].date)
+    for (const c of Object.values(custMap)) {
+      const lastDate = new Date(c.lastDate)
       const dueDate  = new Date(lastDate)
       dueDate.setDate(dueDate.getDate() + SERVICE_INTERVAL_DAYS)
 
@@ -47,7 +56,7 @@ export default function Reminders() {
 
       const entry = {
         ...c,
-        lastDate: invs[0].date,
+        lastDate: c.lastDate,
         dueDate: dueDate.toISOString().split('T')[0],
         daysUntilDue,
         daysSinceLast,
