@@ -94,7 +94,7 @@ export function generateInvoicePDF(invoice, customer, items, invoiceType) {
         const cv = document.createElement('canvas')
         cv.width = imgEl.naturalWidth; cv.height = imgEl.naturalHeight
         cv.getContext('2d').drawImage(imgEl, 0, 0)
-        doc.addImage(cv.toDataURL('image/png'), 'PNG', M, y, 36, 20)
+        doc.addImage(cv.toDataURL('image/png'), 'PNG', M, y+2, 44, 22)
       }
     } catch(e) {}
     doc.setFont('helvetica','bolditalic').setFontSize(19).setTextColor(20)
@@ -133,14 +133,22 @@ export function generateInvoicePDF(invoice, customer, items, invoiceType) {
   const { adv, mec } = getTech(invoice)
 
   // 4 left boxes
-  const boxTexts = [customer.name||'', customer.phone||'', '', '']
   for (let i=0; i<4; i++) {
     doc.setDrawColor(120).setLineWidth(0.25)
     doc.rect(M, y+i*lh, boxW, lh)
-    doc.setFont('helvetica', i===0?'bold':'normal').setFontSize(i===0?10:8.5).setTextColor(20)
-    if (boxTexts[i]) doc.text(boxTexts[i], M+2, y+i*lh+4.5)
   }
-  // Advisor / Mechanic in last box
+  // Box 0: Name
+  doc.setFont('helvetica','normal').setFontSize(7.5).setTextColor(80)
+  doc.text('Name :', M+2, y+0*lh+3)
+  doc.setFont('helvetica','bold').setFontSize(9.5).setTextColor(20)
+  doc.text(customer.name||'', M+2, y+0*lh+lh-1.5)
+  // Box 1: Phone
+  doc.setFont('helvetica','normal').setFontSize(7.5).setTextColor(80)
+  doc.text('Number :', M+2, y+1*lh+3)
+  doc.setFont('helvetica','normal').setFontSize(8.5).setTextColor(20)
+  doc.text(customer.phone||'', M+2, y+1*lh+lh-1.5)
+  // Box 2: blank
+  // Box 3: Advisor/Mechanic
   doc.setFont('helvetica','bold').setFontSize(8.5).setTextColor(20)
   doc.text('Advisor  : '+adv,  M+2,  y+3*lh+4.5)
   doc.text('Mechanic  : '+mec, M+46, y+3*lh+4.5)
@@ -215,11 +223,13 @@ export function generateInvoicePDF(invoice, customer, items, invoiceType) {
 
   doc.setFont('helvetica','normal').setFontSize(8).setTextColor(30)
   doc.text(toWords(total), M, y+4)
+  // Total label (outside box, left of box)
   doc.setFont('helvetica','bold').setFontSize(9).setTextColor(20)
-  doc.text(co.totalLabel, W-M-22, y+4)
+  doc.text(co.totalLabel, W-M-42, y+5)
+  // Total box (just the number)
   doc.setDrawColor(120).setLineWidth(0.3)
-  doc.rect(W-M-20, y, 20, 7)
-  doc.setFontSize(9.5)
+  doc.rect(W-M-26, y, 26, 7)
+  doc.setFont('helvetica','bold').setFontSize(10).setTextColor(20)
   doc.text(total.toFixed(2), W-M-1, y+5.3, {align:'right'})
   y += 13
 
