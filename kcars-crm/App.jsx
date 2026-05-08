@@ -32,7 +32,8 @@ export default function App() {
       <div className="topbar">
         <div style={{ display:'flex', alignItems:'center', gap:16 }}>
           <div className="topbar-title">
-            🔧 {import.meta.env.VITE_GARAGE_NAME || 'K-Cars Auto'}
+            <img src="/logo.jpg" alt="K-Cars Auto Centre"
+              style={{ height:36, width:'auto', objectFit:'contain', borderRadius:4 }} />
             <span className="topbar-badge">Singapore</span>
           </div>
           {/* Nav tabs */}
