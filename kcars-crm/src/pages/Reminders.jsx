@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
 
-const SERVICE_INTERVAL_DAYS = 90   // 3 months
+const SERVICE_INTERVAL_DAYS = 180  // 6 months
 const REMIND_BEFORE_DAYS    = 7    // 1 week before due
 
 // Message template - bilingual
