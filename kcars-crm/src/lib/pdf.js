@@ -165,12 +165,10 @@ export function generateInvoicePDF(invoice, customer, items, invoiceType) {
   doc.setFont('helvetica','normal').setFontSize(9).setTextColor(20)
   doc.text(customer.phone||'', M+20, y+textLh+4)
 
-  // Advisor + Mechanic (same row, with box line only for this row)
-  doc.setDrawColor(120).setLineWidth(0.25)
-  doc.rect(M, y+2*textLh, boxW, 7)
-  doc.setFont('helvetica','bold').setFontSize(8.5).setTextColor(20)
-  doc.text('Advisor  : '+adv,  M+2,  y+2*textLh+4.8)
-  doc.text('Mechanic  : '+mec, M+44, y+2*textLh+4.8)
+  // Advisor + Mechanic - no box, plain text
+  doc.setFont('helvetica','bold').setFontSize(9).setTextColor(20)
+  doc.text('Advisor  : '+adv,  M,    y+2*textLh+4)
+  doc.text('Mechanic  : '+mec, M+46, y+2*textLh+4)
 
   // Right side: 7 vehicle info rows
   const vRows = [
