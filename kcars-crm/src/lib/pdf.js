@@ -125,13 +125,13 @@ export function generateInvoicePDF(invoice, customer, items, invoiceType) {
 
   } else {
     // 1 World: NO logo. Big bold italic company name centered, info below
-    doc.setFont('helvetica','bolditalic').setFontSize(28).setTextColor(20)
-    doc.text(co.name, W/2, y+12, {align:'center'})
-    doc.setFont('helvetica','normal').setFontSize(9).setTextColor(50)
-    doc.text(co.addr, W/2, y+17, {align:'center'})
-    doc.text(co.tel,  W/2, y+22, {align:'center'})
-    doc.text(co.reg,  W/2, y+27, {align:'center'})
-    y += 33
+    doc.setFont('helvetica','bolditalic').setFontSize(26).setTextColor(20)
+    doc.text(co.name, W/2, y+13, {align:'center'})
+    doc.setFont('helvetica','bold').setFontSize(9).setTextColor(30)
+    doc.text(co.addr, W/2, y+21, {align:'center'})
+    doc.text(co.tel,  W/2, y+27, {align:'center'})
+    doc.text(co.reg,  W/2, y+33, {align:'center'})
+    y += 40
   }
 
   // Divider
