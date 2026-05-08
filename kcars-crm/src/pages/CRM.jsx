@@ -331,11 +331,11 @@ function InvoiceCard({ inv, open, onToggle, onEdit, onDelete, onStatusChange, cu
           <div style={{ display: 'flex', gap: 6, padding: '10px 14px', background: 'var(--bg2)', flexWrap: 'wrap' }}>
             <button className="btn" style={{ fontSize: 11 }} onClick={onEdit}>✏️ Edit 编辑</button>
             <button className="btn btn-green" style={{ fontSize: 11 }}
-              onClick={() => downloadInvoice(inv, customer, inv.invoice_items || [])}>
+              onClick={() => downloadInvoice(inv, customer, inv.invoice_items || [], inv.invoice_type)}>
               ⬇️ PDF
             </button>
             <button className="btn btn-primary" style={{ fontSize: 11 }}
-              onClick={() => printInvoice(inv, customer, inv.invoice_items || [])}>
+              onClick={() => printInvoice(inv, customer, inv.invoice_items || [], inv.invoice_type)}>
               🖨️ Print 打印
             </button>
             {inv.status === 'draft' && (
@@ -431,11 +431,15 @@ function CustomerModal({ customer, onClose, onSave }) {
 // ─── Invoice Modal ──────────────────────────────────────────────────────
 function InvoiceModal({ customer, invoice, catalog, onClose, onSave }) {
   const [date, setDate] = useState(invoice?.date || new Date().toISOString().split('T')[0])
-  const [tech, setTech] = useState(invoice?.technician || '')
+  const [advisor, setAdvisor] = useState(invoice?.advisor || '')
+  const [mechanic, setMechanic] = useState(invoice?.mechanic || '')
+  const [mileage, setMileage] = useState(invoice?.mileage || '')
+  const [chassisNo, setChassisNo] = useState(invoice?.chassis_no || '')
   const [notes, setNotes] = useState(invoice?.notes || '')
   const [discount, setDiscount] = useState(invoice?.discount || 0)
   const [status, setStatus] = useState(invoice?.status || 'draft')
   const [invNo, setInvNo] = useState(invoice?.invoice_no || '')
+  const [invType, setInvType] = useState(invoice?.invoice_type || 'auto')
   const [cart, setCart] = useState(
     invoice?.invoice_items?.map(it => ({
       desc: it.description, cat: it.category || '', cost: parseFloat(it.unit_price || it.amount || 0)
@@ -447,6 +451,16 @@ function InvoiceModal({ customer, invoice, catalog, onClose, onSave }) {
   useEffect(() => {
     if (!invoice) generateInvoiceNo().then(setInvNo)
   }, [])
+
+  const detectType = (cartItems) => {
+    const descs = cartItems.map(i => i.desc.toLowerCase())
+    if (descs.some(d => d.includes('gearbox') || d.includes('transmission'))) return 'kc_gearbox'
+    if (descs.some(d => d.includes('engine overhaul'))) return 'kc_engine'
+    return 'onew'
+  }
+
+  const currentType = invType === 'auto' ? detectType(cart) : invType
+  const typeLabel = { onew: '1 World — Regular 普通维修', kc_engine: 'K-Cars — Engine 引擎大修', kc_gearbox: 'K-Cars — Gearbox 变速箱 (含保修)' }
 
   const cats = [...new Set(catalog.map(c => c.category))]
   const catItems = activeCat ? catalog.filter(c => c.category === activeCat) : []
@@ -471,7 +485,8 @@ function InvoiceModal({ customer, invoice, catalog, onClose, onSave }) {
   const save = async () => {
     if (!cart.length) { alert('Please add at least one item. 请至少添加一项。'); return }
     setSaving(true)
-    const inv = { invoice_no: invNo, date, technician: tech, notes, discount: parseFloat(discount || 0), status, subtotal: subtotal.toFixed(2), total: total.toFixed(2) }
+    const detectedType = invType === 'auto' ? detectType(cart) : invType
+    const inv = { invoice_no: invNo, date, technician: advisor+', '+mechanic, advisor, mechanic, mileage, chassis_no: chassisNo, notes, discount: parseFloat(discount || 0), status, subtotal: subtotal.toFixed(2), total: total.toFixed(2), invoice_type: detectedType }
     const items = cart.map((c, i) => ({
       description: c.desc, category: c.cat,
       qty: 1, unit_price: c.cost, amount: c.cost, sort_order: i
@@ -495,6 +510,16 @@ function InvoiceModal({ customer, invoice, catalog, onClose, onSave }) {
             <span style={{ color: 'var(--text3)', marginLeft: 8 }}>{customer?.car_make} {customer?.car_model}</span>
           </div>
 
+          {/* Invoice type badge */}
+          <div style={{ background: currentType==='onew'?'#e6f1fb': currentType==='kc_gearbox'?'#fff3ef':'#eaf3de',
+            borderRadius:8, padding:'8px 12px', marginBottom:12, fontSize:12, fontWeight:600,
+            color: currentType==='onew'?'#185fa5': currentType==='kc_gearbox'?'#D85A30':'#1a7f37' }}>
+            📄 {typeLabel[currentType]}
+            <span style={{ fontWeight:400, color:'#888', marginLeft:8 }}>
+              {invType==='auto'?'(auto-detected 自动识别)':'(manual 手动)'}
+            </span>
+          </div>
+
           <div className="form-grid">
             <div className="form-row">
               <label>Invoice No 发票号</label>
@@ -505,8 +530,32 @@ function InvoiceModal({ customer, invoice, catalog, onClose, onSave }) {
               <input type="date" value={date} onChange={e => setDate(e.target.value)} />
             </div>
             <div className="form-row">
-              <label>Technician 技师</label>
-              <input value={tech} onChange={e => setTech(e.target.value)} placeholder="e.g. MENG, JON" />
+              <label>Advisor 顾问</label>
+              <input value={advisor} onChange={e => setAdvisor(e.target.value)} placeholder="e.g. JIMMY, NORMAN" />
+            </div>
+            <div className="form-row">
+              <label>Mechanic 技师</label>
+              <input value={mechanic} onChange={e => setMechanic(e.target.value)} placeholder="e.g. ZHU, MENG" />
+            </div>
+            <div className="form-row">
+              <label>Mileage 里程</label>
+              <input value={mileage} onChange={e => setMileage(e.target.value)} placeholder="e.g. 93718" />
+            </div>
+            <div className="form-row">
+              <label>Chassis No. 底盘号</label>
+              <input value={chassisNo} onChange={e => setChassisNo(e.target.value)} placeholder="optional" />
+            </div>
+          </div>
+
+          <div className="form-grid">
+            <div className="form-row">
+              <label>Invoice Type 发票类型</label>
+              <select value={invType} onChange={e => setInvType(e.target.value)}>
+                <option value="auto">Auto-detect 自动识别</option>
+                <option value="onew">1 World — Regular 普通维修</option>
+                <option value="kc_engine">K-Cars — Engine 引擎大修</option>
+                <option value="kc_gearbox">K-Cars — Gearbox 变速箱</option>
+              </select>
             </div>
             <div className="form-row">
               <label>Status 状态</label>
