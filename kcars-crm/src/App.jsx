@@ -3,6 +3,7 @@ import { supabase } from './lib/supabase'
 import Login from './pages/Login'
 import CRM from './pages/CRM'
 import Reminders from './pages/Reminders'
+import Reports from './pages/Reports'
 
 export default function App() {
   const [session, setSession] = useState(null)
@@ -41,6 +42,7 @@ export default function App() {
             {[
               { key:'crm',       label:'👥 Customers 客户' },
               { key:'reminders', label:'🔔 Reminders 提醒' },
+              { key:'reports',   label:'📊 Reports 报表' },
             ].map(t => (
               <button key={t.key} onClick={() => setPage(t.key)}
                 style={{
@@ -66,6 +68,7 @@ export default function App() {
       <div style={{ flex:1, overflow:'auto' }}>
         {page === 'crm'       && <CRM session={session} embedded />}
         {page === 'reminders' && <Reminders />}
+        {page === 'reports'   && <Reports />}
       </div>
     </div>
   )
