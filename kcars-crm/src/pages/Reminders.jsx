@@ -5,8 +5,12 @@ const SERVICE_INTERVAL_DAYS = 180  // 6 months
 const REMIND_BEFORE_DAYS    = 7    // 1 week before due
 
 // Message template - bilingual
-const buildMessage = (name, plate, dueDate) =>
-  `Hi ${name}! 您好 😊\n\nYour vehicle ${plate} is due for servicing on ${dueDate}.\n您的车牌 ${plate} 将于 ${dueDate} 到期保养。\n\nBook your appointment now and keep your car in top condition! 💪🔧\n请尽快预约，保持爱车最佳状态！\n\nK-Cars Auto Singapore\n📞 +6593215151`
+const buildMessage = (name, plate, dueDate, overdue=false) => {
+  if (overdue) {
+    return `Hi ${name}, this is K-Cars Auto Centre.\n\nYour vehicle ${plate} was due for servicing on ${dueDate}.\n\nPlease come in as soon as possible to avoid any issues with your vehicle.\n\nCall or WhatsApp us: +65 9321 5151\n\nThank you!\nK-Cars Auto Centre`
+  }
+  return `Hi ${name}, this is K-Cars Auto Centre.\n\nYour vehicle ${plate} is due for servicing on ${dueDate}.\n\nBook your appointment now to keep your car in top condition!\n\nCall or WhatsApp us: +65 9321 5151\n\nThank you!\nK-Cars Auto Centre`
+}
 
 export default function Reminders() {
   const [groups, setGroups] = useState({ upcoming: [], overdue: [], recent: [] })
