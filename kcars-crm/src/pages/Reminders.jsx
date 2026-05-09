@@ -73,8 +73,9 @@ export default function Reminders() {
   const getStatus = (id) => statuses[id] || 'pending'
 
   // Groups
-  const overdue  = allList.filter(c => getType(c)==='overdue'  && !['sold','skip'].includes(getStatus(c.id)))
-  const upcoming = allList.filter(c => getType(c)==='upcoming' && !['sold','skip'].includes(getStatus(c.id)))
+  const FOLLOWUP = ['messaged','appointed','sold','skip']
+  const overdue  = allList.filter(c => getType(c)==='overdue'  && !FOLLOWUP.includes(getStatus(c.id)))
+  const upcoming = allList.filter(c => getType(c)==='upcoming' && !FOLLOWUP.includes(getStatus(c.id)))
   const recent   = allList.filter(c => getType(c)==='recent')
   const followed = allList.filter(c =>
     (getType(c)==='overdue' || getType(c)==='upcoming') &&
