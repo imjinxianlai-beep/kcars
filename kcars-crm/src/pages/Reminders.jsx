@@ -85,14 +85,18 @@ export default function Reminders() {
 
   const setStatus = (id, s) => {
     const updated = { ...statuses, [id]: s }
-    setStatuses(updated); saveLocal('kcars_statuses', updated)
-    // If moving to a followed-up status, fade out
+    // If moving to followed-up status: fade out first, then update state
     if (['messaged','appointed','sold','skip'].includes(s)) {
       setFading(f => new Set([...f, id]))
       setTimeout(() => {
-        setStatuses(u => ({ ...u })) // trigger re-render to remove from list
+        setStatuses(updated)
+        saveLocal('kcars_statuses', updated)
         setFading(f => { const n=new Set(f); n.delete(id); return n })
-      }, 600)
+      }, 500)
+    } else {
+      // Reverting to pending - show immediately
+      setStatuses(updated)
+      saveLocal('kcars_statuses', updated)
     }
   }
   const setNote = (id, n) => {
