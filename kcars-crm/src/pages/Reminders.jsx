@@ -82,7 +82,14 @@ export default function Reminders() {
     ['messaged','appointed','sold','skip'].includes(getStatus(c.id))
   )
 
-  const currentList = tab==='overdue' ? overdue : tab==='upcoming' ? upcoming : tab==='recent' ? recent : followed
+  const currentList = 
+    tab==='overdue'   ? overdue :
+    tab==='upcoming'  ? upcoming :
+    tab==='messaged'  ? messaged_list :
+    tab==='appointed' ? appointed_list :
+    tab==='sold'      ? sold_list :
+    tab==='skip'      ? skip_list :
+    recent
 
   const setStatus = (id, s) => {
     const updated = { ...statuses, [id]: s }
@@ -132,11 +139,19 @@ export default function Reminders() {
     for (const c of toSend) { openWA(c); await new Promise(r => setTimeout(r,800)) }
   }
 
+  const messaged_list  = allList.filter(c => (getType(c)==='overdue'||getType(c)==='upcoming') && getStatus(c.id)==='messaged')
+  const appointed_list = allList.filter(c => (getType(c)==='overdue'||getType(c)==='upcoming') && getStatus(c.id)==='appointed')
+  const sold_list      = allList.filter(c => (getType(c)==='overdue'||getType(c)==='upcoming') && getStatus(c.id)==='sold')
+  const skip_list      = allList.filter(c => (getType(c)==='overdue'||getType(c)==='upcoming') && getStatus(c.id)==='skip')
+
   const TABS = [
-    { key:'overdue',  icon:'⚠️', label:'Overdue 已过期',      count: overdue.length,  color:'#e74c3c' },
-    { key:'upcoming', icon:'🔔', label:'Due Soon 即将到期',    count: upcoming.length, color:'var(--orange)' },
-    { key:'followed', icon:'📋', label:'Followed Up 已跟进',   count: followed.length, color:'#185fa5' },
-    { key:'recent',   icon:'✅', label:'Serviced 已保养',      count: recent.length,   color:'#1a7f37' },
+    { key:'overdue',   icon:'⚠️', label:'Overdue 已过期',    count: overdue.length,        color:'#e74c3c' },
+    { key:'upcoming',  icon:'🔔', label:'Due Soon 即将到期', count: upcoming.length,       color:'var(--orange)' },
+    { key:'messaged',  icon:'📱', label:'Msg Sent 已发信',   count: messaged_list.length,  color:'#185fa5' },
+    { key:'appointed', icon:'📅', label:'Appointed 已预约',  count: appointed_list.length, color:'#1a7f37' },
+    { key:'sold',      icon:'🚗', label:'Car Sold 已卖车',   count: sold_list.length,      color:'#D85A30' },
+    { key:'skip',      icon:'❌', label:'Skip 无需跟进',      count: skip_list.length,      color:'#888' },
+    { key:'recent',    icon:'✅', label:'Serviced 已保养',   count: recent.length,         color:'#27ae60' },
   ]
 
   const statusBadge = (id) => {
@@ -162,24 +177,25 @@ export default function Reminders() {
         <button className="btn" onClick={loadReminders} style={{ fontSize:12 }}>🔄 Refresh</button>
       </div>
 
-      {/* Tab cards */}
-      <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:8, marginBottom:16 }}>
+      {/* Tab cards - responsive wrap */}
+      <div style={{ display:'flex', flexWrap:'wrap', gap:8, marginBottom:16 }}>
         {TABS.map(t => (
           <div key={t.key} onClick={() => { setTab(t.key); setSelected(new Set()) }}
             style={{
               background: tab===t.key ? t.color : '#fff',
               color: tab===t.key ? '#fff' : '#111',
               border: `2px solid ${t.color}`, borderRadius:10,
-              padding:'10px 14px', cursor:'pointer', transition:'.15s'
+              padding:'8px 12px', cursor:'pointer', transition:'.15s',
+              minWidth:120, flex:'1 1 120px'
             }}>
-            <div style={{ fontSize:20, fontWeight:700 }}>{t.icon} {t.count}</div>
-            <div style={{ fontSize:11, marginTop:2, opacity:.85 }}>{t.label}</div>
+            <div style={{ fontSize:18, fontWeight:700 }}>{t.icon} {t.count}</div>
+            <div style={{ fontSize:10, marginTop:2, opacity:.85, lineHeight:1.3 }}>{t.label}</div>
           </div>
         ))}
       </div>
 
       {/* Bulk actions */}
-      {tab !== 'recent' && tab !== 'followed' && currentList.length > 0 && (
+      {(tab === 'overdue' || tab === 'upcoming') && currentList.length > 0 && (
         <div style={{ background:'#fff', border:'1px solid var(--border)', borderRadius:10, padding:'10px 14px', marginBottom:12, display:'flex', alignItems:'center', gap:10, flexWrap:'wrap' }}>
           <input type="checkbox"
             checked={selected.size === currentList.length && currentList.length > 0}
@@ -197,7 +213,7 @@ export default function Reminders() {
       {/* List */}
       {loading ? <div className="spinner" /> : currentList.length === 0 ? (
         <div style={{ textAlign:'center', padding:'40px', color:'var(--text3)' }}>
-          <div style={{ fontSize:40 }}>{tab==='recent'?'✅':tab==='followed'?'📋':'🎉'}</div>
+          <div style={{ fontSize:40 }}>{tab==='recent'?'✅':tab==='appointed'?'📅':tab==='sold'?'🚗':tab==='skip'?'❌':tab==='messaged'?'📱':'🎉'}</div>
           <div style={{ fontSize:14, marginTop:8 }}>No customers in this category</div>
         </div>
       ) : (
@@ -217,7 +233,7 @@ export default function Reminders() {
               }}>
                 <div style={{ display:'flex', alignItems:'flex-start', gap:10 }}>
                   {/* Checkbox */}
-                  {tab !== 'recent' && tab !== 'followed' && (
+                  {(tab === 'overdue' || tab === 'upcoming') && (
                     <input type="checkbox" checked={selected.has(c.id)} onChange={() => toggleSelect(c.id)}
                       style={{ width:16, height:16, accentColor:'var(--orange)', cursor:'pointer', marginTop:3, flexShrink:0 }} />
                   )}
