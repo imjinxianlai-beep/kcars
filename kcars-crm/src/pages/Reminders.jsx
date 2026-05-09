@@ -28,6 +28,7 @@ export default function Reminders() {
   const [noteOpen, setNoteOpen]   = useState(null)
   const [apptOpen, setApptOpen]   = useState(null)
   const [selected, setSelected]   = useState(new Set())
+  const [fading, setFading]       = useState(new Set()) // ids currently fading out
 
   useEffect(() => { loadReminders() }, [])
 
@@ -85,6 +86,14 @@ export default function Reminders() {
   const setStatus = (id, s) => {
     const updated = { ...statuses, [id]: s }
     setStatuses(updated); saveLocal('kcars_statuses', updated)
+    // If moving to a followed-up status, fade out
+    if (['messaged','appointed','sold','skip'].includes(s)) {
+      setFading(f => new Set([...f, id]))
+      setTimeout(() => {
+        setStatuses(u => ({ ...u })) // trigger re-render to remove from list
+        setFading(f => { const n=new Set(f); n.delete(id); return n })
+      }, 600)
+    }
   }
   const setNote = (id, n) => {
     const updated = { ...notes, [id]: n }
@@ -199,6 +208,7 @@ export default function Reminders() {
                 background:'#fff', border:'1px solid var(--border)', borderRadius:10,
                 padding:'12px 14px', opacity: isSold ? .55 : 1,
                 borderLeft: selected.has(c.id) ? '3px solid var(--orange)' : '1px solid var(--border)',
+                transition: 'opacity .3s, transform .3s',
               }}>
                 <div style={{ display:'flex', alignItems:'flex-start', gap:10 }}>
                   {/* Checkbox */}
