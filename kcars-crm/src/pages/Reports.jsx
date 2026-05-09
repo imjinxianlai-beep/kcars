@@ -460,14 +460,31 @@ function VehicleAnalysis() {
 // ── Drill Customer Row ──────────────────────────────────────────────────
 function DrillCustomer({ c, rank }) {
   const [open, setOpen] = useState(false)
+  const [invOpen, setInvOpen] = useState({})
+  const [invItems, setInvItems] = useState({})
   const invoices = (c.invoices || []).sort((a,b) => b.date.localeCompare(a.date))
   const medal = rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : `#${rank}`
 
+  const toggleInv = async (inv) => {
+    const isOpen = invOpen[inv.id]
+    setInvOpen(s => ({ ...s, [inv.id]: !isOpen }))
+    // Load items if not loaded yet
+    if (!isOpen && !invItems[inv.id]) {
+      const { data } = await supabase
+        .from('invoice_items')
+        .select('*')
+        .eq('invoice_id', inv.id)
+        .order('sort_order')
+      setInvItems(s => ({ ...s, [inv.id]: data || [] }))
+    }
+  }
+
   return (
     <div className="card" style={{ padding:0, overflow:'hidden' }}>
+      {/* Customer header */}
       <div onClick={() => setOpen(!open)}
         style={{ padding:'12px 16px', cursor:'pointer', display:'flex', alignItems:'center', gap:12 }}>
-        <div style={{ fontSize: rank<=3?20:14, fontWeight:700, minWidth:36, textAlign:'center', color:'var(--text3)' }}>
+        <div style={{ fontSize:rank<=3?20:14, fontWeight:700, minWidth:36, textAlign:'center', color:'var(--text3)' }}>
           {medal}
         </div>
         <div style={{ flex:1 }}>
@@ -477,7 +494,7 @@ function DrillCustomer({ c, rank }) {
             {c.phone && <span style={{ fontSize:11, color:'#25D366' }}>📱 {c.phone}</span>}
           </div>
           <div style={{ fontSize:11, color:'var(--text3)', marginTop:2 }}>
-            Last visit: {c.lastVisit || '—'} · Total: ${c.totalSpend.toLocaleString('en-SG',{minimumFractionDigits:2})}
+            Last visit: {c.lastVisit || '—'} · Total spent: ${c.totalSpend.toLocaleString('en-SG',{minimumFractionDigits:2})}
           </div>
         </div>
         <div style={{ textAlign:'right', flexShrink:0 }}>
@@ -487,26 +504,57 @@ function DrillCustomer({ c, rank }) {
         <span style={{ fontSize:10, color:'var(--text3)', transition:'.2s', transform:open?'rotate(180deg)':'none' }}>▼</span>
       </div>
 
+      {/* Invoice list */}
       {open && (
-        <div style={{ borderTop:'1px solid var(--border2)' }}>
+        <div style={{ borderTop:'1px solid var(--border2)', background:'var(--bg2)' }}>
           {invoices.map(inv => (
-            <div key={inv.id} style={{
-              display:'flex', justifyContent:'space-between', alignItems:'center',
-              padding:'8px 16px 8px 64px', borderBottom:'1px solid var(--border2)', fontSize:13
-            }}>
-              <div>
-                <div style={{ fontWeight:600 }}>{inv.invoice_no}</div>
-                <div style={{ fontSize:11, color:'var(--text3)' }}>
-                  {inv.date}{inv.technician ? ` · 🔧 ${inv.technician}` : ''}
+            <div key={inv.id} style={{ borderBottom:'1px solid var(--border2)' }}>
+              {/* Invoice row */}
+              <div onClick={() => toggleInv(inv)}
+                style={{ display:'flex', justifyContent:'space-between', alignItems:'center',
+                  padding:'9px 16px 9px 52px', cursor:'pointer', transition:'.1s',
+                  background: invOpen[inv.id] ? 'var(--orange-light)' : 'transparent' }}>
+                <div>
+                  <div style={{ fontWeight:600, fontSize:13 }}>{inv.invoice_no}</div>
+                  <div style={{ fontSize:11, color:'var(--text3)' }}>
+                    {inv.date}{inv.technician ? ` · 🔧 ${inv.technician}` : ''}
+                  </div>
+                </div>
+                <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+                  <div style={{ textAlign:'right' }}>
+                    <div style={{ fontWeight:700, color:'var(--orange)', fontSize:14 }}>${parseFloat(inv.total||0).toFixed(2)}</div>
+                    <div style={{ fontSize:10, fontWeight:700,
+                      color: inv.status==='paid'?'var(--green)':inv.status==='confirmed'?'var(--blue)':'var(--text3)'
+                    }}>{(inv.status||'').toUpperCase()}</div>
+                  </div>
+                  <span style={{ fontSize:10, color:'var(--text3)', transition:'.2s', transform:invOpen[inv.id]?'rotate(180deg)':'none' }}>▼</span>
                 </div>
               </div>
-              <div style={{ textAlign:'right' }}>
-                <div style={{ fontWeight:700, color:'var(--orange)' }}>${parseFloat(inv.total||0).toFixed(2)}</div>
-                <div style={{
-                  fontSize:10, fontWeight:700,
-                  color: inv.status==='paid'?'var(--green)':inv.status==='confirmed'?'var(--blue)':'var(--text3)'
-                }}>{(inv.status||'').toUpperCase()}</div>
-              </div>
+
+              {/* Invoice items */}
+              {invOpen[inv.id] && (
+                <div style={{ background:'var(--card)', borderTop:'1px solid var(--border2)' }}>
+                  {!invItems[inv.id]
+                    ? <div style={{ padding:'8px 16px 8px 68px', fontSize:12, color:'var(--text3)' }}>Loading...</div>
+                    : invItems[inv.id].length === 0
+                    ? <div style={{ padding:'8px 16px 8px 68px', fontSize:12, color:'var(--text3)' }}>No items</div>
+                    : invItems[inv.id].map(it => (
+                      <div key={it.id} style={{ display:'flex', justifyContent:'space-between',
+                        padding:'7px 16px 7px 68px', borderBottom:'1px solid var(--border2)', fontSize:13 }}>
+                        <span style={{ flex:1, color:'var(--text)' }}>{it.description}</span>
+                        <span style={{ fontWeight:600, whiteSpace:'nowrap', marginLeft:12,
+                          color: parseFloat(it.amount)<0 ? 'var(--red)' : 'var(--text2)' }}>
+                          {parseFloat(it.amount)<0?'−':'+'}${Math.abs(parseFloat(it.amount||0)).toFixed(2)}
+                        </span>
+                      </div>
+                    ))
+                  }
+                  <div style={{ display:'flex', justifyContent:'flex-end',
+                    padding:'8px 16px', background:'#111', color:'#fff', fontSize:13, fontWeight:700 }}>
+                    TOTAL: <span style={{ color:'var(--orange)', marginLeft:8 }}>${parseFloat(inv.total||0).toFixed(2)}</span>
+                  </div>
+                </div>
+              )}
             </div>
           ))}
         </div>
