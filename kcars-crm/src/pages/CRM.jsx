@@ -430,6 +430,9 @@ function CustomerModal({ customer, onClose, onSave }) {
 
 // ─── Invoice Modal ──────────────────────────────────────────────────────
 function InvoiceModal({ customer, invoice, catalog, onClose, onSave }) {
+  const ADVISORS = ['', 'JON', 'JIMMY', 'MENG', 'IVY', 'NORMAN', 'XIN', 'ZHU', 'TAO', 'XIONG']
+  const MECHANICS = ['', 'NORMAN', 'XIN', 'ZHU', 'TAO', 'XIONG', 'MENG']
+
   const [date, setDate] = useState(invoice?.date || new Date().toISOString().split('T')[0])
   const [advisor, setAdvisor] = useState(invoice?.advisor || '')
   const [mechanic, setMechanic] = useState(invoice?.mechanic || '')
@@ -531,11 +534,15 @@ function InvoiceModal({ customer, invoice, catalog, onClose, onSave }) {
             </div>
             <div className="form-row">
               <label>Advisor 顾问</label>
-              <input value={advisor} onChange={e => setAdvisor(e.target.value)} placeholder="e.g. JIMMY, NORMAN" />
+              <select value={advisor} onChange={e => setAdvisor(e.target.value)}>
+                {ADVISORS.map(a => <option key={a} value={a}>{a || '— Select Advisor —'}</option>)}
+              </select>
             </div>
             <div className="form-row">
               <label>Mechanic 技师</label>
-              <input value={mechanic} onChange={e => setMechanic(e.target.value)} placeholder="e.g. ZHU, MENG" />
+              <select value={mechanic} onChange={e => setMechanic(e.target.value)}>
+                {MECHANICS.map(m => <option key={m} value={m}>{m || '— Select Mechanic —'}</option>)}
+              </select>
             </div>
             <div className="form-row">
               <label>Mileage 里程</label>
