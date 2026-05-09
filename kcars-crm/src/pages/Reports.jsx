@@ -267,6 +267,9 @@ function VehicleAnalysis() {
   const [loading, setLoading] = useState(true)
   const [expanded, setExpanded] = useState({})
   const [search, setSearch] = useState('')
+  const [drilldown, setDrilldown] = useState(null) // {make, model}
+  const [drillData, setDrillData] = useState(null)
+  const [drillLoading, setDrillLoading] = useState(false)
 
   useEffect(() => { load() }, [])
 
@@ -278,7 +281,6 @@ function VehicleAnalysis() {
       .not('car_make', 'is', null)
       .neq('car_make', '')
 
-    // Group by make → model
     const grouped = {}
     for (const c of custs || []) {
       const make = (c.car_make || '').trim().toUpperCase() || 'UNKNOWN'
@@ -288,7 +290,6 @@ function VehicleAnalysis() {
       grouped[make][model]++
     }
 
-    // Sort by count
     const sorted = Object.entries(grouped)
       .map(([make, models]) => ({
         make,
@@ -301,23 +302,90 @@ function VehicleAnalysis() {
     setLoading(false)
   }
 
-  const toggle = (make) => setExpanded(e => ({ ...e, [make]: !e[make] }))
+  const openDrilldown = async (make, model) => {
+    setDrilldown({ make, model })
+    setDrillLoading(true)
+    setDrillData(null)
 
+    // Get all customers with this make+model + their invoices
+    const { data: custs } = await supabase
+      .from('customers')
+      .select('*, invoices(id, date, total, invoice_no, technician, status)')
+      .ilike('car_make', make)
+      .ilike('car_model', model)
+      .order('name')
+
+    // Add visit count and total spend, sort by visits desc
+    const enriched = (custs || []).map(c => ({
+      ...c,
+      visitCount: (c.invoices || []).length,
+      totalSpend: (c.invoices || []).reduce((a,i) => a + parseFloat(i.total||0), 0),
+      lastVisit: (c.invoices || []).sort((a,b) => b.date.localeCompare(a.date))[0]?.date || ''
+    })).sort((a,b) => b.visitCount - a.visitCount)
+
+    setDrillData(enriched)
+    setDrillLoading(false)
+  }
+
+  const toggle = (make) => setExpanded(e => ({ ...e, [make]: !e[make] }))
   const filtered = data?.filter(d =>
     !search || d.make.includes(search.toUpperCase()) ||
     d.models.some(([m]) => m.includes(search.toUpperCase()))
   ) || []
-
   const totalCustomers = data?.reduce((a,d)=>a+d.total,0) || 0
 
+  // ── Drilldown view ──
+  if (drilldown) return (
+    <div style={{ padding:'16px 20px', maxWidth:900, margin:'0 auto' }}>
+      <button className="btn" onClick={() => { setDrilldown(null); setDrillData(null) }}
+        style={{ marginBottom:16, fontSize:12 }}>
+        ← Back to Vehicle Analysis
+      </button>
+      <div style={{ fontSize:18, fontWeight:700, marginBottom:4 }}>
+        🚗 {drilldown.make} {drilldown.model}
+      </div>
+      <div style={{ fontSize:12, color:'var(--text3)', marginBottom:16 }}>
+        {drillData ? `${drillData.length} customers · Sorted by most visits` : 'Loading...'}
+      </div>
+
+      {drillLoading ? <div className="spinner" /> : (
+        <>
+          {/* Summary */}
+          {drillData && (
+            <div style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:10, marginBottom:16 }}>
+              {[
+                { label:'Total Customers', val: drillData.length },
+                { label:'Total Visits', val: drillData.reduce((a,c)=>a+c.visitCount,0).toLocaleString() },
+                { label:'Total Revenue', val: '$'+drillData.reduce((a,c)=>a+c.totalSpend,0).toLocaleString('en-SG',{minimumFractionDigits:0}) },
+              ].map((s,i) => (
+                <div key={i} className="card" style={{ textAlign:'center', padding:'10px 12px' }}>
+                  <div style={{ fontSize:11, color:'var(--text3)', textTransform:'uppercase' }}>{s.label}</div>
+                  <div style={{ fontSize:18, fontWeight:700, color:i===2?'var(--orange)':'var(--text)', marginTop:4 }}>{s.val}</div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {/* Customer list */}
+          <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+            {(drillData || []).map((c, idx) => (
+              <DrillCustomer key={c.id} c={c} rank={idx+1} />
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  )
+
+  // ── Main view ──
   return (
     <div style={{ padding:'16px 20px', maxWidth:900, margin:'0 auto' }}>
       <div style={{ fontSize:18, fontWeight:700, marginBottom:4 }}>🚗 Vehicle Analysis 车型分析</div>
       <div style={{ fontSize:12, color:'var(--text3)', marginBottom:16 }}>
         {totalCustomers.toLocaleString()} customers · {data?.length || 0} brands
+        <span style={{ marginLeft:8, color:'var(--orange)' }}>· Click any model to see all customers</span>
       </div>
 
-      {/* Search */}
       <div style={{ marginBottom:14 }}>
         <input value={search} onChange={e => setSearch(e.target.value)}
           placeholder="🔍 Search brand or model... e.g. Toyota, Estima"
@@ -328,7 +396,6 @@ function VehicleAnalysis() {
         <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
           {filtered.map(({ make, total, models }) => (
             <div key={make} className="card" style={{ padding:0, overflow:'hidden' }}>
-              {/* Brand header */}
               <div onClick={() => toggle(make)}
                 style={{
                   display:'flex', alignItems:'center', justifyContent:'space-between',
@@ -341,33 +408,40 @@ function VehicleAnalysis() {
                   <span style={{ fontSize:16 }}>🚗</span>
                   <div>
                     <div style={{ fontWeight:700, fontSize:14 }}>{make}</div>
-                    <div style={{ fontSize:11, color:'var(--text3)' }}>{models.length} model{models.length!==1?'s':''}</div>
+                    <div style={{ fontSize:11, color:'var(--text3)' }}>{models.length} models · {total} customers</div>
                   </div>
                 </div>
                 <div style={{ display:'flex', alignItems:'center', gap:12 }}>
-                  {/* Mini bar */}
                   <div style={{ width:80, height:6, background:'var(--border)', borderRadius:3, overflow:'hidden' }}>
-                    <div style={{ height:'100%', background:'var(--orange)', borderRadius:3, width: (total/totalCustomers*100)+'%' }} />
+                    <div style={{ height:'100%', background:'var(--orange)', borderRadius:3, width:(total/totalCustomers*100)+'%' }} />
                   </div>
                   <span style={{ fontSize:16, fontWeight:700, color:'var(--orange)', minWidth:40, textAlign:'right' }}>{total}</span>
-                  <span style={{ fontSize:10, color:'var(--text3)', transform: expanded[make]?'rotate(180deg)':'none', transition:'.2s' }}>▼</span>
+                  <span style={{ fontSize:10, color:'var(--text3)', transform:expanded[make]?'rotate(180deg)':'none', transition:'.2s' }}>▼</span>
                 </div>
               </div>
 
-              {/* Models breakdown */}
               {expanded[make] && (
                 <div style={{ borderTop:'1px solid var(--border)' }}>
                   {models.map(([model, count]) => (
                     <div key={model}
-                      style={{ display:'flex', alignItems:'center', justifyContent:'space-between',
-                        padding:'9px 16px 9px 36px', borderBottom:'1px solid var(--border2)' }}>
+                      onClick={() => openDrilldown(make, model)}
+                      style={{
+                        display:'flex', alignItems:'center', justifyContent:'space-between',
+                        padding:'9px 16px 9px 36px', borderBottom:'1px solid var(--border2)',
+                        cursor:'pointer', transition:'.1s'
+                      }}
+                      onMouseEnter={e => e.currentTarget.style.background='var(--orange-light)'}
+                      onMouseLeave={e => e.currentTarget.style.background='transparent'}>
                       <div style={{ display:'flex', alignItems:'center', gap:10, flex:1 }}>
-                        <span style={{ fontSize:12, color:'var(--text2)' }}>{model}</span>
+                        <span style={{ fontSize:12, fontWeight:600, color:'var(--text)' }}>{model}</span>
                         <div style={{ flex:1, height:4, background:'var(--border)', borderRadius:2, maxWidth:200, overflow:'hidden' }}>
                           <div style={{ height:'100%', background:'#D85A3060', borderRadius:2, width:(count/total*100)+'%' }} />
                         </div>
                       </div>
-                      <span style={{ fontSize:13, fontWeight:600, color:'var(--text2)', minWidth:30, textAlign:'right' }}>{count}</span>
+                      <div style={{ display:'flex', alignItems:'center', gap:8 }}>
+                        <span style={{ fontSize:13, fontWeight:600, color:'var(--text2)', minWidth:30, textAlign:'right' }}>{count}</span>
+                        <span style={{ fontSize:11, color:'var(--orange)' }}>View →</span>
+                      </div>
                     </div>
                   ))}
                   <div style={{ padding:'8px 16px', fontSize:11, color:'var(--text3)', textAlign:'right' }}>
@@ -375,6 +449,64 @@ function VehicleAnalysis() {
                   </div>
                 </div>
               )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── Drill Customer Row ──────────────────────────────────────────────────
+function DrillCustomer({ c, rank }) {
+  const [open, setOpen] = useState(false)
+  const invoices = (c.invoices || []).sort((a,b) => b.date.localeCompare(a.date))
+  const medal = rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : `#${rank}`
+
+  return (
+    <div className="card" style={{ padding:0, overflow:'hidden' }}>
+      <div onClick={() => setOpen(!open)}
+        style={{ padding:'12px 16px', cursor:'pointer', display:'flex', alignItems:'center', gap:12 }}>
+        <div style={{ fontSize: rank<=3?20:14, fontWeight:700, minWidth:36, textAlign:'center', color:'var(--text3)' }}>
+          {medal}
+        </div>
+        <div style={{ flex:1 }}>
+          <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
+            <span style={{ fontWeight:700, fontSize:14 }}>{c.name}</span>
+            <span style={{ fontFamily:'monospace', fontSize:12, color:'var(--orange)', fontWeight:700 }}>{c.car_plate}</span>
+            {c.phone && <span style={{ fontSize:11, color:'#25D366' }}>📱 {c.phone}</span>}
+          </div>
+          <div style={{ fontSize:11, color:'var(--text3)', marginTop:2 }}>
+            Last visit: {c.lastVisit || '—'} · Total: ${c.totalSpend.toLocaleString('en-SG',{minimumFractionDigits:2})}
+          </div>
+        </div>
+        <div style={{ textAlign:'right', flexShrink:0 }}>
+          <div style={{ fontSize:20, fontWeight:700, color:'var(--orange)' }}>{c.visitCount}</div>
+          <div style={{ fontSize:10, color:'var(--text3)' }}>visits</div>
+        </div>
+        <span style={{ fontSize:10, color:'var(--text3)', transition:'.2s', transform:open?'rotate(180deg)':'none' }}>▼</span>
+      </div>
+
+      {open && (
+        <div style={{ borderTop:'1px solid var(--border2)' }}>
+          {invoices.map(inv => (
+            <div key={inv.id} style={{
+              display:'flex', justifyContent:'space-between', alignItems:'center',
+              padding:'8px 16px 8px 64px', borderBottom:'1px solid var(--border2)', fontSize:13
+            }}>
+              <div>
+                <div style={{ fontWeight:600 }}>{inv.invoice_no}</div>
+                <div style={{ fontSize:11, color:'var(--text3)' }}>
+                  {inv.date}{inv.technician ? ` · 🔧 ${inv.technician}` : ''}
+                </div>
+              </div>
+              <div style={{ textAlign:'right' }}>
+                <div style={{ fontWeight:700, color:'var(--orange)' }}>${parseFloat(inv.total||0).toFixed(2)}</div>
+                <div style={{
+                  fontSize:10, fontWeight:700,
+                  color: inv.status==='paid'?'var(--green)':inv.status==='confirmed'?'var(--blue)':'var(--text3)'
+                }}>{(inv.status||'').toUpperCase()}</div>
+              </div>
             </div>
           ))}
         </div>
