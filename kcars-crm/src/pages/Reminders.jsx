@@ -97,7 +97,7 @@ export default function Reminders() {
   }
 
   const openWA = (c) => {
-    const msg = encodeURIComponent(buildMessage(c.name, c.car_plate, c.dueDate))
+    const msg = encodeURIComponent(buildMessage(c.name, c.car_plate, c.dueDate, c.daysUntilDue < 0))
     const phone = (c.phone || '').replace(/\D/g,'')
     const url = phone
       ? `https://wa.me/65${phone}?text=${msg}`
