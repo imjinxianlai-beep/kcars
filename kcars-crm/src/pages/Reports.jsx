@@ -43,21 +43,38 @@ function DateQuery() {
   const [results, setResults] = useState(null)
   const [loading, setLoading] = useState(false)
 
-  const quickSelect = (type) => {
+  const quickSelect = async (type) => {
     const now = new Date()
+    let from, to, newMode = 'day', newDate = today, newFrom = today, newTo = today, newMonth = today.slice(0,7)
+
     if (type === 'today') {
-      setMode('day'); setDate(today)
+      from = today; to = today; newMode='day'; newDate=today
     } else if (type === 'yesterday') {
       const y = new Date(now); y.setDate(y.getDate()-1)
-      setMode('day'); setDate(y.toISOString().split('T')[0])
+      newDate = y.toISOString().split('T')[0]
+      from = newDate; to = newDate; newMode='day'
     } else if (type === 'week') {
       const mon = new Date(now); mon.setDate(now.getDate() - now.getDay() + 1)
-      setMode('range')
-      setDateFrom(mon.toISOString().split('T')[0])
-      setDateTo(today)
+      newFrom = mon.toISOString().split('T')[0]; newTo = today
+      from = newFrom; to = newTo; newMode='range'
     } else if (type === 'month') {
-      setMode('month'); setMonth(today.slice(0,7))
+      newMode='month'
+      const d = new Date(today.slice(0,7)+'-01')
+      d.setMonth(d.getMonth()+1); d.setDate(0)
+      from = today.slice(0,7)+'-01'; to = d.toISOString().split('T')[0]
     }
+
+    setMode(newMode); setDate(newDate); setDateFrom(newFrom); setDateTo(newTo); setMonth(newMonth)
+    
+    // Auto search
+    setLoading(true); setResults(null)
+    const { data } = await supabase
+      .from('invoices')
+      .select('*, customers(name, car_plate, car_make, car_model, phone)')
+      .gte('date', from).lte('date', to)
+      .order('date', { ascending: false })
+    setLoading(false)
+    setResults({ invoices: data || [], from, to })
   }
 
   const search = async () => {
@@ -65,7 +82,12 @@ function DateQuery() {
     let from, to
     if (mode === 'day') { from = date; to = date }
     else if (mode === 'range') { from = dateFrom; to = dateTo }
-    else { from = month+'-01'; to = month+'-31' }
+    else {
+      from = month+'-01'
+      const d = new Date(month+'-01')
+      d.setMonth(d.getMonth()+1); d.setDate(0)
+      to = d.toISOString().split('T')[0]
+    }
 
     const { data, error } = await supabase
       .from('invoices')
