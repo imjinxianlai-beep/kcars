@@ -70,7 +70,7 @@ function DateQuery() {
     setLoading(true); setResults(null)
     const { data } = await supabase
       .from('invoices')
-      .select('*, customers(name, car_plate, car_make, car_model, phone)')
+      .select('*, customers(name, car_plate, car_make, car_model, phone), invoice_items(*)')
       .gte('date', from).lte('date', to)
       .order('date', { ascending: false })
     setLoading(false)
@@ -91,7 +91,7 @@ function DateQuery() {
 
     const { data, error } = await supabase
       .from('invoices')
-      .select('*, customers(name, car_plate, car_make, car_model, phone)')
+      .select('*, customers(name, car_plate, car_make, car_model, phone), invoice_items(*)')
       .gte('date', from).lte('date', to)
       .order('date', { ascending: false })
 
@@ -190,42 +190,72 @@ function DateQuery() {
             </div>
           ) : (
             <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
-              {results.invoices.map(inv => (
-                <div key={inv.id} className="card" style={{ padding:'12px 16px' }}>
-                  <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', flexWrap:'wrap', gap:8 }}>
-                    <div>
-                      <div style={{ display:'flex', alignItems:'center', gap:10 }}>
-                        <span style={{ fontWeight:700, fontSize:14 }}>{inv.customers?.name || '—'}</span>
-                        <span style={{ fontFamily:'monospace', fontSize:12, color:'var(--orange)', fontWeight:700 }}>
-                          {inv.customers?.car_plate}
-                        </span>
-                        <span style={{ fontSize:11, color:'var(--text3)' }}>
-                          {inv.customers?.car_make} {inv.customers?.car_model}
-                        </span>
-                      </div>
-                      <div style={{ fontSize:12, color:'var(--text3)', marginTop:3 }}>
-                        {inv.invoice_no} · {inv.date}
-                        {inv.technician && ` · 🔧 ${inv.technician}`}
-                      </div>
-                    </div>
-                    <div style={{ display:'flex', alignItems:'center', gap:12 }}>
-                      <span style={{
-                        fontSize:10, fontWeight:700, padding:'2px 8px', borderRadius:20,
-                        background: inv.status==='paid'?'#eaf3de': inv.status==='confirmed'?'#e6f1fb':'#f5f5f5',
-                        color: inv.status==='paid'?'#1a7f37': inv.status==='confirmed'?'#185fa5':'#888'
-                      }}>
-                        {inv.status?.toUpperCase()}
-                      </span>
-                      <span style={{ fontSize:16, fontWeight:700, color:'var(--orange)' }}>
-                        ${parseFloat(inv.total||0).toFixed(2)}
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              ))}
+              {results.invoices.map(inv => <InvoiceRow key={inv.id} inv={inv} />)}
             </div>
           )}
         </>
+      )}
+    </div>
+  )
+}
+
+
+// ── INVOICE ROW (expandable) ────────────────────────────────────────────
+function InvoiceRow({ inv }) {
+  const [open, setOpen] = useState(false)
+  const items = (inv.invoice_items || []).sort((a,b) => a.sort_order - b.sort_order)
+  const c = inv.customers || {}
+
+  return (
+    <div className="card" style={{ padding:0, overflow:'hidden' }}>
+      {/* Header row */}
+      <div onClick={() => setOpen(!open)}
+        style={{ padding:'12px 16px', cursor:'pointer', display:'flex', alignItems:'center', justifyContent:'space-between', flexWrap:'wrap', gap:8 }}>
+        <div style={{ flex:1 }}>
+          <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
+            <span style={{ fontWeight:700, fontSize:14 }}>{c.name || '—'}</span>
+            <span style={{ fontFamily:'monospace', fontSize:12, color:'var(--orange)', fontWeight:700 }}>{c.car_plate}</span>
+            <span style={{ fontSize:11, color:'var(--text3)' }}>{c.car_make} {c.car_model}</span>
+            {c.phone && <span style={{ fontSize:11, color:'#25D366', fontWeight:600 }}>📱 {c.phone}</span>}
+          </div>
+          <div style={{ fontSize:11, color:'var(--text3)', marginTop:3 }}>
+            {inv.invoice_no} · {inv.date}
+            {inv.technician && <span style={{ color:'var(--text2)', marginLeft:6 }}>🔧 {inv.technician}</span>}
+          </div>
+        </div>
+        <div style={{ display:'flex', alignItems:'center', gap:10 }}>
+          <span style={{
+            fontSize:10, fontWeight:700, padding:'2px 8px', borderRadius:20,
+            background: inv.status==='paid'?'#eaf3de': inv.status==='confirmed'?'#e6f1fb':'#f5f5f5',
+            color: inv.status==='paid'?'#1a7f37': inv.status==='confirmed'?'#185fa5':'#888'
+          }}>
+            {(inv.status||'').toUpperCase()}
+          </span>
+          <span style={{ fontSize:16, fontWeight:700, color:'var(--orange)' }}>
+            ${parseFloat(inv.total||0).toFixed(2)}
+          </span>
+          <span style={{ fontSize:10, color:'var(--text3)', transition:'.2s', transform: open?'rotate(180deg)':'none' }}>▼</span>
+        </div>
+      </div>
+
+      {/* Expandable items */}
+      {open && (
+        <div style={{ borderTop:'1px solid var(--border2)' }}>
+          {items.length === 0
+            ? <div style={{ padding:'10px 16px', fontSize:12, color:'var(--text3)' }}>No line items</div>
+            : items.map(it => (
+              <div key={it.id} style={{ display:'flex', justifyContent:'space-between', padding:'7px 16px', borderBottom:'1px solid var(--border2)', fontSize:13 }}>
+                <span style={{ flex:1, color:'var(--text)' }}>{it.description}</span>
+                <span style={{ fontWeight:600, color: parseFloat(it.amount)<0?'var(--red)':'var(--text2)', whiteSpace:'nowrap', marginLeft:12 }}>
+                  {parseFloat(it.amount)<0?'−':'+'}${Math.abs(parseFloat(it.amount||0)).toFixed(2)}
+                </span>
+              </div>
+            ))
+          }
+          <div style={{ display:'flex', justifyContent:'flex-end', padding:'8px 16px', background:'#111', color:'#fff', fontSize:13, fontWeight:700 }}>
+            <span>TOTAL: <span style={{ color:'var(--orange)' }}>${parseFloat(inv.total||0).toFixed(2)}</span></span>
+          </div>
+        </div>
       )}
     </div>
   )
