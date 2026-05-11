@@ -1,7 +1,11 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import { supabase, getCustomers, getTotalCustomers, searchCustomers, getInvoices, deleteCustomer,
-  upsertCustomer, createInvoice, updateInvoice, updateInvoiceStatus,
-  deleteInvoice, generateInvoiceNo, getCatalog } from '../lib/supabase'
+  upsertCustomer, updateCustomerTags, createInvoice, updateInvoice, updateInvoiceStatus,
+  deleteInvoice, generateInvoiceNo, getCatalog,
+  getActivities, addActivity, deleteActivity,
+  getNotes, addNote, updateNote, deleteNote,
+  getTasks, addTask, updateTask, deleteTask,
+} from '../lib/supabase'
 import { printInvoice, downloadInvoice } from '../lib/pdf'
 
 const fmt = (n) => `$${parseFloat(n || 0).toFixed(2)}`
@@ -9,6 +13,16 @@ const fmtSGD = (n) => `SGD $${parseFloat(n || 0).toLocaleString('en-SG', { minim
 
 const statusColors = { draft: 'tag-draft', confirmed: 'tag-confirmed', paid: 'tag-paid' }
 const statusLabels = { draft: 'Draft 草稿', confirmed: 'Confirmed 已确认', paid: 'Paid 已付款' }
+
+const PRESET_TAGS = [
+  { key: 'vip',      label: 'VIP',       emoji: '🌟', bg: '#FEF3C7', color: '#D97706' },
+  { key: 'regular',  label: 'Regular 常客', emoji: '🔄', bg: '#DBEAFE', color: '#2563EB' },
+  { key: 'new',      label: 'New 新客户',  emoji: '🆕', bg: '#DCFCE7', color: '#16A34A' },
+  { key: 'problem',  label: 'Problem ⚠️', emoji: '⚠️', bg: '#FEE2E2', color: '#DC2626' },
+  { key: 'sold_car', label: 'Sold Car 已卖车', emoji: '🚗', bg: '#F3F4F6', color: '#6B7280' },
+]
+
+const tagMeta = Object.fromEntries(PRESET_TAGS.map(t => [t.key, t]))
 
 export default function CRM({ session }) {
   const [customers, setCustomers] = useState([])
@@ -21,6 +35,7 @@ export default function CRM({ session }) {
   const [openInv, setOpenInv] = useState(null)
   const [modal, setModal] = useState(null) // null | 'customer' | 'invoice' | 'catalog'
   const [editingInvoice, setEditingInvoice] = useState(null)
+  const [tagFilter, setTagFilter] = useState(null)
   const searchRef = useRef(null)
 
   // Load customers on mount
@@ -87,10 +102,7 @@ export default function CRM({ session }) {
   const totalAllRev = customers.reduce((a) => a, 0)
 
   return (
-    <div className="app-shell">
-      {/* Top Bar */}
-
-
+    <div className="crm-shell">
       {/* Stats Bar */}
       <div className="stats-bar">
         <div className="stat-card">
@@ -127,19 +139,48 @@ export default function CRM({ session }) {
               ＋ Add Customer 新增客户
             </button>
           </div>
+
+          {/* Tag filter */}
+          <div style={{ padding:'6px 8px', borderBottom:'1px solid var(--border2)', display:'flex', gap:4, flexWrap:'wrap' }}>
+            <button onClick={() => setTagFilter(null)} style={{
+              padding:'2px 8px', borderRadius:20, border:'1px solid var(--border)',
+              fontSize:10, fontWeight:600, cursor:'pointer',
+              background: tagFilter === null ? 'var(--orange)' : 'transparent',
+              color: tagFilter === null ? '#fff' : 'var(--text3)',
+            }}>All</button>
+            {PRESET_TAGS.map(t => (
+              <button key={t.key} onClick={() => setTagFilter(tagFilter === t.key ? null : t.key)} style={{
+                padding:'2px 8px', borderRadius:20, border:`1px solid ${t.color}40`,
+                fontSize:10, fontWeight:600, cursor:'pointer',
+                background: tagFilter === t.key ? t.bg : 'transparent',
+                color: tagFilter === t.key ? t.color : 'var(--text3)',
+              }}>{t.emoji}</button>
+            ))}
+          </div>
+
           <div className="sidebar-count">
             {search ? `${customers.length} results` : `Showing ${customers.length.toLocaleString()} of ${totalCount.toLocaleString()} customers`}
           </div>
           <div className="cust-list">
             {loading ? <div className="spinner" /> :
-              customers.slice(0, 300).map(c => (
-                <div key={c.id} className={`cust-item ${selected?.id === c.id ? 'active' : ''}`}
-                  onClick={() => selectCustomer(c)}>
-                  <div className="cust-name">{c.name}</div>
-                  <div className="cust-plate">{c.car_plate}</div>
-                  <div className="cust-sub">{c.car_make} {c.car_model}</div>
-                </div>
-              ))}
+              customers.slice(0, 300)
+                .filter(c => !tagFilter || (c.tags || []).includes(tagFilter))
+                .map(c => (
+                  <div key={c.id} className={`cust-item ${selected?.id === c.id ? 'active' : ''}`}
+                    onClick={() => selectCustomer(c)}>
+                    <div className="cust-name">{c.name}</div>
+                    <div className="cust-plate">{c.car_plate}</div>
+                    <div className="cust-sub">{c.car_make} {c.car_model}</div>
+                    {(c.tags || []).length > 0 && (
+                      <div style={{ display:'flex', gap:3, flexWrap:'wrap', marginTop:3 }}>
+                        {(c.tags || []).map(tag => {
+                          const m = tagMeta[tag]; if (!m) return null
+                          return <span key={tag} style={{ fontSize:9, padding:'1px 5px', borderRadius:20, background:m.bg, color:m.color, fontWeight:700 }}>{m.emoji} {m.label}</span>
+                        })}
+                      </div>
+                    )}
+                  </div>
+                ))}
             {customers.length > 300 && (
               <div className="sidebar-count">Showing 300 of {customers.length} — search to narrow</div>
             )}
@@ -206,8 +247,31 @@ export default function CRM({ session }) {
                     <div className="info-val">{selected.phone || '—'}</div>
                   </div>
                 </div>
+                {/* Tags */}
+                <div style={{ display:'flex', gap:6, flexWrap:'wrap', alignItems:'center', paddingTop:4 }}>
+                  {PRESET_TAGS.map(t => {
+                    const has = (selected.tags || []).includes(t.key)
+                    return (
+                      <button key={t.key} onClick={async () => {
+                        const curr = selected.tags || []
+                        const next = has ? curr.filter(x => x !== t.key) : [...curr, t.key]
+                        const { data } = await updateCustomerTags(selected.id, next)
+                        if (data) { setSelected(data); loadCustomers() }
+                      }} style={{
+                        padding:'3px 10px', borderRadius:20,
+                        border:`1.5px solid ${has ? t.color : 'var(--border)'}`,
+                        background: has ? t.bg : 'transparent',
+                        color: has ? t.color : 'var(--text3)',
+                        fontSize:11, fontWeight:600, cursor:'pointer', transition:'.15s',
+                      }}>
+                        {t.emoji} {t.label}
+                      </button>
+                    )
+                  })}
+                </div>
+
                 {selected.notes && (
-                  <div style={{ fontSize: 12, color: 'var(--text2)', padding: '4px 0' }}>
+                  <div style={{ fontSize: 12, color: 'var(--text2)', padding: '4px 0', marginTop:4 }}>
                     📝 {selected.notes}
                   </div>
                 )}
@@ -235,12 +299,18 @@ export default function CRM({ session }) {
                   customer={selected}
                 />
               ))}
+
+              {/* Activity Timeline */}
+              <ActivityTimeline customerId={selected.id} session={session} />
+
+              {/* Notes & Tasks */}
+              <NotesAndTasks customerId={selected.id} />
             </>
           )}
         </div>
       </div>
 
-      {/* Modals */}
+      {/* ── Modals ── */}
       {modal === 'customer' && (
         <CustomerModal onClose={() => setModal(null)}
           onSave={async (data) => {
@@ -254,7 +324,8 @@ export default function CRM({ session }) {
         <CustomerModal customer={selected} onClose={() => setModal(null)}
           onSave={async (data) => {
             const { data: updated } = await upsertCustomer({ ...data, id: selected.id })
-            setSelected(updated)
+            // Keep selected loaded even if upsert returns null (e.g. no-op)
+            setSelected(prev => updated ?? { ...prev, ...data, car_plate: data.car_plate?.trim().toUpperCase() })
             loadCustomers()
             setModal(null)
           }} />
@@ -368,7 +439,12 @@ function CustomerModal({ customer, onClose, onSave }) {
     car_model: customer?.car_model || '',
     car_year: customer?.car_year || '',
     notes: customer?.notes || '',
+    tags: customer?.tags || [],
   })
+  const toggleTag = (key) => setForm(f => ({
+    ...f,
+    tags: f.tags.includes(key) ? f.tags.filter(t => t !== key) : [...f.tags, key]
+  }))
   const [saving, setSaving] = useState(false)
   const set = (k) => (e) => setForm(f => ({ ...f, [k]: e.target.value }))
 
@@ -410,6 +486,25 @@ function CustomerModal({ customer, onClose, onSave }) {
             <div className="form-row">
               <label>Model 型号</label>
               <input value={form.car_model} onChange={set('car_model')} placeholder="e.g. Wish" />
+            </div>
+          </div>
+          <div className="form-row">
+            <label>Tags 标签</label>
+            <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
+              {PRESET_TAGS.map(t => {
+                const has = form.tags.includes(t.key)
+                return (
+                  <button key={t.key} type="button" onClick={() => toggleTag(t.key)} style={{
+                    padding:'4px 11px', borderRadius:20,
+                    border:`1.5px solid ${has ? t.color : 'var(--border)'}`,
+                    background: has ? t.bg : 'transparent',
+                    color: has ? t.color : 'var(--text3)',
+                    fontSize:11, fontWeight:600, cursor:'pointer', transition:'.15s',
+                  }}>
+                    {t.emoji} {t.label}
+                  </button>
+                )
+              })}
             </div>
           </div>
           <div className="form-row">
@@ -648,6 +743,318 @@ function InvoiceModal({ customer, invoice, catalog, onClose, onSave }) {
           </div>
         </div>
       </div>
+    </div>
+  )
+}
+
+// ─── Activity Timeline ──────────────────────────────────────────────────────
+const ACTIVITY_TYPES = [
+  { key: 'repair',      icon: '🔧', label: 'Repair 维修记录',   color: 'var(--orange)' },
+  { key: 'whatsapp',    icon: '📱', label: 'WhatsApp 联系',     color: '#25D366' },
+  { key: 'note',        icon: '📝', label: 'Note 备注',          color: 'var(--blue)' },
+  { key: 'appointment', icon: '📅', label: 'Appointment 预约',  color: 'var(--green)' },
+]
+
+function ActivityTimeline({ customerId, session }) {
+  const [activities, setActivities] = useState([])
+  const [loading, setLoading]       = useState(true)
+  const [addOpen, setAddOpen]       = useState(false)
+  const [type, setType]             = useState('note')
+  const [content, setContent]       = useState('')
+  const [saving, setSaving]         = useState(false)
+
+  useEffect(() => { load() }, [customerId])
+
+  const load = async () => {
+    setLoading(true)
+    const { data } = await getActivities(customerId)
+    setActivities(data || [])
+    setLoading(false)
+  }
+
+  const save = async () => {
+    if (!content.trim()) return
+    setSaving(true)
+    await addActivity({ customer_id: customerId, type, content: content.trim(), created_by: session?.user?.email || 'Staff' })
+    setContent(''); setAddOpen(false); setSaving(false)
+    load()
+  }
+
+  const remove = async (id) => {
+    if (!confirm('Delete this activity?')) return
+    await deleteActivity(id)
+    load()
+  }
+
+  const typeInfo = Object.fromEntries(ACTIVITY_TYPES.map(t => [t.key, t]))
+  const fmtDate = (iso) => new Date(iso).toLocaleString('en-SG', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' })
+
+  return (
+    <div>
+      <div className="section-title">
+        <span>⏱ ACTIVITY TIMELINE 活动记录</span>
+        <button className="btn" style={{ fontSize:11, padding:'3px 10px' }}
+          onClick={() => setAddOpen(!addOpen)}>
+          + Add 添加
+        </button>
+      </div>
+
+      {addOpen && (
+        <div className="card" style={{ marginBottom:10, padding:'12px 14px' }}>
+          <div style={{ display:'flex', gap:6, marginBottom:10, flexWrap:'wrap' }}>
+            {ACTIVITY_TYPES.map(t => (
+              <button key={t.key} onClick={() => setType(t.key)} style={{
+                padding:'4px 11px', borderRadius:20, border:`1.5px solid ${type===t.key ? t.color : 'var(--border)'}`,
+                background: type===t.key ? `${t.color}18` : 'transparent',
+                color: type===t.key ? t.color : 'var(--text3)',
+                fontSize:11, fontWeight:600, cursor:'pointer',
+              }}>
+                {t.icon} {t.label}
+              </button>
+            ))}
+          </div>
+          <textarea
+            value={content} onChange={e => setContent(e.target.value)}
+            placeholder="Describe what happened... 描述发生了什么"
+            style={{ width:'100%', height:64, padding:'8px 10px', border:'1.5px solid var(--border)', borderRadius:'var(--radius)', fontSize:13, fontFamily:'inherit', resize:'vertical', outline:'none' }}
+            onFocus={e => e.target.style.borderColor = 'var(--orange)'}
+            onBlur={e => e.target.style.borderColor = 'var(--border)'}
+          />
+          <div style={{ display:'flex', gap:6, marginTop:8, justifyContent:'flex-end' }}>
+            <button className="btn" style={{ fontSize:11 }} onClick={() => { setAddOpen(false); setContent('') }}>Cancel</button>
+            <button className="btn btn-primary" style={{ fontSize:11 }} onClick={save} disabled={saving || !content.trim()}>
+              {saving ? 'Saving...' : '✓ Save 保存'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {loading ? <div className="spinner" style={{ margin:'16px auto' }} /> : activities.length === 0 ? (
+        <div style={{ textAlign:'center', padding:'20px', color:'var(--text3)', fontSize:12, background:'var(--card)', borderRadius:'var(--radius)', border:'1px solid var(--border)' }}>
+          No activities yet. Add the first one above. 暂无记录
+        </div>
+      ) : (
+        <div className="timeline">
+          {activities.map(act => {
+            const t = typeInfo[act.type] || typeInfo.note
+            return (
+              <div key={act.id} className={`timeline-item ${act.type}`}>
+                <div className="timeline-dot">{t.icon}</div>
+                <div className="timeline-content">
+                  <div style={{ fontSize:13, lineHeight:1.5 }}>{act.content}</div>
+                  <div className="timeline-meta" style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
+                    <span>{t.icon} {t.label} · {fmtDate(act.created_at)}</span>
+                    <div style={{ display:'flex', gap:8, alignItems:'center' }}>
+                      {act.created_by && <span style={{ fontSize:10, color:'var(--text3)' }}>by {act.created_by}</span>}
+                      <button onClick={() => remove(act.id)} style={{ background:'none', border:'none', color:'var(--text3)', cursor:'pointer', fontSize:14, lineHeight:1, padding:0 }}>×</button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── Notes & Tasks ──────────────────────────────────────────────────────────
+function NotesAndTasks({ customerId }) {
+  const [notes, setNotes]   = useState([])
+  const [tasks, setTasks]   = useState([])
+  const [tab, setTab]       = useState('tasks') // tasks | notes
+  const [newNote, setNewNote] = useState('')
+  const [newTask, setNewTask] = useState({ title: '', due_date: '' })
+  const [editNoteId, setEditNoteId] = useState(null)
+  const [editNoteVal, setEditNoteVal] = useState('')
+
+  useEffect(() => { loadAll() }, [customerId])
+
+  const loadAll = async () => {
+    const [n, t] = await Promise.all([getNotes(customerId), getTasks(customerId)])
+    setNotes(n.data || [])
+    setTasks(t.data || [])
+  }
+
+  // ── Notes ──
+  const saveNote = async () => {
+    if (!newNote.trim()) return
+    await addNote({ customer_id: customerId, content: newNote.trim() })
+    setNewNote(''); loadAll()
+  }
+
+  const saveEditNote = async (id) => {
+    if (!editNoteVal.trim()) return
+    await updateNote(id, editNoteVal.trim())
+    setEditNoteId(null); loadAll()
+  }
+
+  const removeNote = async (id) => {
+    if (!confirm('Delete note?')) return
+    await deleteNote(id); loadAll()
+  }
+
+  // ── Tasks ──
+  const saveTask = async () => {
+    if (!newTask.title.trim()) return
+    await addTask({ customer_id: customerId, title: newTask.title.trim(), due_date: newTask.due_date || null, completed: false })
+    setNewTask({ title: '', due_date: '' }); loadAll()
+  }
+
+  const toggleTask = async (task) => {
+    await updateTask(task.id, { completed: !task.completed }); loadAll()
+  }
+
+  const removeTask = async (id) => {
+    await deleteTask(id); loadAll()
+  }
+
+  const fmtDate = (iso) => iso ? new Date(iso).toLocaleDateString('en-SG') : null
+  const isOverdue = (task) => !task.completed && task.due_date && new Date(task.due_date) < new Date()
+
+  const pendingTasks = tasks.filter(t => !t.completed)
+  const doneTasks    = tasks.filter(t => t.completed)
+
+  return (
+    <div style={{ marginTop: 4 }}>
+      <div className="section-title">
+        <span>📌 NOTES & TASKS 备注 & 任务</span>
+        <div style={{ display:'flex', gap:4 }}>
+          {[{ key:'tasks', label:`Tasks ${tasks.length>0?`(${pendingTasks.length})`:''}`}, { key:'notes', label:`Notes ${notes.length>0?`(${notes.length})`:''}`}].map(t => (
+            <button key={t.key} onClick={() => setTab(t.key)} style={{
+              padding:'2px 10px', borderRadius:20, fontSize:11, fontWeight:600, cursor:'pointer',
+              border: '1px solid var(--border)',
+              background: tab===t.key ? 'var(--orange)' : 'transparent',
+              color: tab===t.key ? '#fff' : 'var(--text3)',
+            }}>{t.label}</button>
+          ))}
+        </div>
+      </div>
+
+      {/* ── TASKS ── */}
+      {tab === 'tasks' && (
+        <div>
+          {/* New task input */}
+          <div className="card" style={{ padding:'10px 12px', marginBottom:8 }}>
+            <div style={{ display:'flex', gap:8, flexWrap:'wrap' }}>
+              <input
+                value={newTask.title}
+                onChange={e => setNewTask(p => ({ ...p, title: e.target.value }))}
+                onKeyDown={e => e.key === 'Enter' && saveTask()}
+                placeholder="New task... 新任务"
+                style={{ flex:1, minWidth:120, padding:'7px 10px', border:'1.5px solid var(--border)', borderRadius:'var(--radius)', fontSize:13, fontFamily:'inherit', outline:'none' }}
+                onFocus={e => e.target.style.borderColor = 'var(--orange)'}
+                onBlur={e => e.target.style.borderColor = 'var(--border)'}
+              />
+              <input type="date"
+                value={newTask.due_date}
+                onChange={e => setNewTask(p => ({ ...p, due_date: e.target.value }))}
+                style={{ padding:'7px 10px', border:'1.5px solid var(--border)', borderRadius:'var(--radius)', fontSize:13, fontFamily:'inherit', outline:'none', color:'var(--text)' }}
+              />
+              <button className="btn btn-primary" style={{ fontSize:11 }} onClick={saveTask}>+ Add</button>
+            </div>
+          </div>
+
+          {/* Pending tasks */}
+          {pendingTasks.length === 0 && doneTasks.length === 0 && (
+            <div style={{ textAlign:'center', padding:16, color:'var(--text3)', fontSize:12, background:'var(--card)', borderRadius:'var(--radius)', border:'1px solid var(--border)' }}>No tasks yet. 暂无任务</div>
+          )}
+
+          {pendingTasks.map(task => (
+            <TaskRow key={task.id} task={task} onToggle={toggleTask} onDelete={removeTask} overdue={isOverdue(task)} fmtDate={fmtDate} />
+          ))}
+
+          {doneTasks.length > 0 && (
+            <>
+              <div style={{ fontSize:10, fontWeight:700, textTransform:'uppercase', letterSpacing:'.5px', color:'var(--text3)', margin:'10px 0 6px' }}>Completed 已完成</div>
+              {doneTasks.map(task => (
+                <TaskRow key={task.id} task={task} onToggle={toggleTask} onDelete={removeTask} overdue={false} fmtDate={fmtDate} done />
+              ))}
+            </>
+          )}
+        </div>
+      )}
+
+      {/* ── NOTES ── */}
+      {tab === 'notes' && (
+        <div>
+          <div className="card" style={{ padding:'10px 12px', marginBottom:8 }}>
+            <textarea
+              value={newNote}
+              onChange={e => setNewNote(e.target.value)}
+              placeholder="Add a note... 添加备注"
+              style={{ width:'100%', height:60, padding:'8px 10px', border:'1.5px solid var(--border)', borderRadius:'var(--radius)', fontSize:13, fontFamily:'inherit', resize:'none', outline:'none' }}
+              onFocus={e => e.target.style.borderColor = 'var(--orange)'}
+              onBlur={e => e.target.style.borderColor = 'var(--border)'}
+            />
+            <div style={{ display:'flex', justifyContent:'flex-end', marginTop:6 }}>
+              <button className="btn btn-primary" style={{ fontSize:11 }} onClick={saveNote} disabled={!newNote.trim()}>+ Save Note</button>
+            </div>
+          </div>
+
+          {notes.length === 0 && (
+            <div style={{ textAlign:'center', padding:16, color:'var(--text3)', fontSize:12, background:'var(--card)', borderRadius:'var(--radius)', border:'1px solid var(--border)' }}>No notes yet. 暂无备注</div>
+          )}
+
+          {notes.map(note => (
+            <div key={note.id} className="card" style={{ padding:'10px 14px', marginBottom:8 }}>
+              {editNoteId === note.id ? (
+                <div>
+                  <textarea
+                    value={editNoteVal}
+                    onChange={e => setEditNoteVal(e.target.value)}
+                    style={{ width:'100%', height:64, padding:'7px 10px', border:'1.5px solid var(--orange)', borderRadius:'var(--radius)', fontSize:13, fontFamily:'inherit', resize:'none', outline:'none' }}
+                    autoFocus
+                  />
+                  <div style={{ display:'flex', gap:6, justifyContent:'flex-end', marginTop:6 }}>
+                    <button className="btn" style={{ fontSize:11 }} onClick={() => setEditNoteId(null)}>Cancel</button>
+                    <button className="btn btn-primary" style={{ fontSize:11 }} onClick={() => saveEditNote(note.id)}>Save</button>
+                  </div>
+                </div>
+              ) : (
+                <div style={{ display:'flex', gap:10, alignItems:'flex-start' }}>
+                  <div style={{ flex:1 }}>
+                    <div style={{ fontSize:13, lineHeight:1.6, color:'var(--text)' }}>{note.content}</div>
+                    <div style={{ fontSize:11, color:'var(--text3)', marginTop:4 }}>
+                      📝 {new Date(note.created_at).toLocaleString('en-SG', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' })}
+                    </div>
+                  </div>
+                  <div style={{ display:'flex', gap:4, flexShrink:0 }}>
+                    <button onClick={() => { setEditNoteId(note.id); setEditNoteVal(note.content) }} style={{ background:'none', border:'none', cursor:'pointer', color:'var(--text3)', fontSize:13, padding:'2px 4px' }}>✏️</button>
+                    <button onClick={() => removeNote(note.id)} style={{ background:'none', border:'none', cursor:'pointer', color:'var(--text3)', fontSize:13, padding:'2px 4px' }}>🗑</button>
+                  </div>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function TaskRow({ task, onToggle, onDelete, overdue, fmtDate, done }) {
+  return (
+    <div style={{
+      display:'flex', alignItems:'center', gap:10, padding:'9px 12px',
+      background:'var(--card)', border:`1px solid ${overdue ? 'var(--red-light)' : 'var(--border)'}`,
+      borderRadius:'var(--radius)', marginBottom:6,
+      opacity: done ? .6 : 1,
+    }}>
+      <input type="checkbox" checked={task.completed} onChange={() => onToggle(task)}
+        style={{ width:16, height:16, accentColor:'var(--orange)', cursor:'pointer', flexShrink:0 }} />
+      <div style={{ flex:1, minWidth:0 }}>
+        <div style={{ fontSize:13, fontWeight:500, textDecoration: done ? 'line-through' : 'none', color: done ? 'var(--text3)' : 'var(--text)' }}>
+          {task.title}
+        </div>
+        {task.due_date && (
+          <div style={{ fontSize:11, marginTop:2, color: overdue ? 'var(--red)' : 'var(--text3)', fontWeight: overdue ? 700 : 400 }}>
+            {overdue ? '⚠️ Overdue:' : '📅'} {fmtDate(task.due_date)}
+          </div>
+        )}
+      </div>
+      <button onClick={() => onDelete(task.id)} style={{ background:'none', border:'none', cursor:'pointer', color:'var(--text3)', fontSize:14, padding:'0 2px', flexShrink:0 }}>×</button>
     </div>
   )
 }

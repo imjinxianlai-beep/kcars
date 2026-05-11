@@ -122,6 +122,7 @@ export default function Reminders() {
   const canBulk = tab==='overdue' || tab==='upcoming'
 
   return (
+    <div style={{height:'100%',overflow:'auto'}}>
     <div style={{padding:'16px 20px',maxWidth:960,margin:'0 auto'}}>
       {/* Header */}
       <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:16}}>
@@ -283,6 +284,7 @@ export default function Reminders() {
           })}
         </div>
       )}
+    </div>
     </div>
   )
 }

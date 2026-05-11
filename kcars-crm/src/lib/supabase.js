@@ -3,6 +3,11 @@ import { createClient } from '@supabase/supabase-js'
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
 const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY
 
+if (!supabaseUrl || !supabaseKey) {
+  document.body.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;height:100vh;font-family:sans-serif;flex-direction:column;gap:12px;background:#fafafa"><div style="font-size:32px">⚠️</div><div style="font-size:16px;font-weight:700;color:#111">Missing Supabase configuration</div><div style="font-size:13px;color:#666">Create a <code style="background:#f3f4f6;padding:2px 6px;border-radius:4px">.env</code> file in the project root with:<br><br><code style="background:#f3f4f6;padding:8px 12px;border-radius:6px;display:block;margin-top:4px">VITE_SUPABASE_URL=...<br>VITE_SUPABASE_ANON_KEY=...</code></div></div>`
+  throw new Error('Missing VITE_SUPABASE_URL or VITE_SUPABASE_ANON_KEY in .env')
+}
+
 export const supabase = createClient(supabaseUrl, supabaseKey, {
   realtime: { params: { eventsPerSecond: 10 } }
 })
@@ -29,6 +34,9 @@ export const getCustomerByPlate = (plate) =>
 
 export const upsertCustomer = (data) =>
   supabase.from('customers').upsert(data, { onConflict: 'car_plate' }).select().single()
+
+export const updateCustomerTags = (id, tags) =>
+  supabase.from('customers').update({ tags }).eq('id', id).select().single()
 
 export const deleteCustomer = (id) =>
   supabase.from('customers').delete().eq('id', id)
@@ -79,6 +87,45 @@ export const generateInvoiceNo = async () => {
     .ilike('invoice_no', `${prefix}%`)
   return `${prefix}${String((count || 0) + 1).padStart(4, '0')}`
 }
+
+// ── Customer Activities (Timeline) ────────────────────
+export const getActivities = (customerId) =>
+  supabase.from('customer_activities').select('*')
+    .eq('customer_id', customerId).order('created_at', { ascending: false })
+
+export const addActivity = (data) =>
+  supabase.from('customer_activities').insert(data).select().single()
+
+export const deleteActivity = (id) =>
+  supabase.from('customer_activities').delete().eq('id', id)
+
+// ── Customer Notes ─────────────────────────────────────
+export const getNotes = (customerId) =>
+  supabase.from('customer_notes').select('*')
+    .eq('customer_id', customerId).order('created_at', { ascending: false })
+
+export const addNote = (data) =>
+  supabase.from('customer_notes').insert(data).select().single()
+
+export const updateNote = (id, content) =>
+  supabase.from('customer_notes').update({ content }).eq('id', id)
+
+export const deleteNote = (id) =>
+  supabase.from('customer_notes').delete().eq('id', id)
+
+// ── Customer Tasks ─────────────────────────────────────
+export const getTasks = (customerId) =>
+  supabase.from('customer_tasks').select('*')
+    .eq('customer_id', customerId).order('completed').order('due_date', { ascending: true, nullsFirst: false })
+
+export const addTask = (data) =>
+  supabase.from('customer_tasks').insert(data).select().single()
+
+export const updateTask = (id, data) =>
+  supabase.from('customer_tasks').update(data).eq('id', id)
+
+export const deleteTask = (id) =>
+  supabase.from('customer_tasks').delete().eq('id', id)
 
 // ── Service Catalog ────────────────────────────────────
 export const getCatalog = () =>
