@@ -40,6 +40,9 @@ export default defineConfig({
   server: {
     port: 5173,
     strictPort: true,
+    watch: {
+      ignored: ['**/.env', '**/vite.config.js', '**/package.json', '**/.git/**', '**/node_modules/**'],
+    },
   },
   optimizeDeps: {
     // framer-motion v12 ships native ESM — exclude from esbuild pre-bundling to avoid
