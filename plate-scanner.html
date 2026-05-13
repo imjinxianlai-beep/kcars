@@ -1,0 +1,1508 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+  <title>K-Cars Plate Scanner</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:      #0f1117;
+      --bg2:     #1a1d2e;
+      --bg3:     #242840;
+      --surface: #1e2235;
+      --border:  #2e3258;
+      --border2: #3a3f6b;
+      --orange:  #e8683a;
+      --orange2: #ff7c4d;
+      --text:    #e8eaf0;
+      --text2:   #a8adc8;
+      --text3:   #6b7099;
+      --green:   #22c55e;
+      --blue:    #3b82f6;
+      --red:     #ef4444;
+      --yellow:  #f59e0b;
+      --radius:  10px;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      font-size: 14px;
+    }
+
+    /* ── Layout ── */
+    .container {
+      max-width: 720px;
+      margin: 0 auto;
+      padding: 20px 16px 80px;
+    }
+
+    /* ── Header ── */
+    .header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-bottom: 24px;
+    }
+    .header img {
+      width: 40px;
+      height: 40px;
+      border-radius: 10px;
+    }
+    .header-title {
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--text);
+    }
+    .header-sub {
+      font-size: 11px;
+      color: var(--text3);
+    }
+
+    /* ── Search ── */
+    .search-wrap {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+    .search-input {
+      flex: 1;
+      background: var(--bg2);
+      border: 2px solid var(--border);
+      border-radius: var(--radius);
+      padding: 14px 16px;
+      font-size: 18px;
+      font-weight: 700;
+      letter-spacing: 3px;
+      text-transform: uppercase;
+      color: var(--text);
+      outline: none;
+      transition: border-color .2s;
+    }
+    .search-input::placeholder { color: var(--text3); letter-spacing: 1px; font-weight: 400; }
+    .search-input:focus { border-color: var(--orange); }
+    .search-btn {
+      background: var(--orange);
+      border: none;
+      border-radius: var(--radius);
+      padding: 14px 20px;
+      font-size: 20px;
+      cursor: pointer;
+      transition: background .2s;
+      color: #fff;
+    }
+    .search-btn:hover { background: var(--orange2); }
+
+    /* ── Card ── */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+      margin-bottom: 16px;
+    }
+    .card-head {
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .card-head-left { display: flex; align-items: center; gap: 10px; }
+    .card-head-icon {
+      width: 36px;
+      height: 36px;
+      border-radius: 8px;
+      background: rgba(232,104,58,.15);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+      flex-shrink: 0;
+    }
+    .card-title { font-size: 16px; font-weight: 700; }
+    .card-sub { font-size: 11px; color: var(--text3); margin-top: 2px; }
+    .plate-badge {
+      font-family: monospace;
+      font-size: 18px;
+      font-weight: 800;
+      color: var(--orange);
+      letter-spacing: 2px;
+    }
+    .card-body { padding: 16px; }
+
+    .info-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+    }
+    .info-item label {
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: .5px;
+      color: var(--text3);
+      display: block;
+      margin-bottom: 3px;
+    }
+    .info-item span {
+      font-size: 13px;
+      color: var(--text);
+    }
+
+    /* ── Buttons ── */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 9px 16px;
+      border-radius: 8px;
+      border: 1px solid var(--border2);
+      background: var(--bg3);
+      color: var(--text);
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background .15s, border-color .15s;
+    }
+    .btn:hover { background: var(--border); }
+    .btn-primary {
+      background: var(--orange);
+      border-color: var(--orange);
+      color: #fff;
+    }
+    .btn-primary:hover { background: var(--orange2); border-color: var(--orange2); }
+    .btn-primary:disabled { opacity: .5; cursor: not-allowed; }
+    .btn-sm { padding: 6px 12px; font-size: 12px; }
+    .btn-ghost { background: transparent; border-color: transparent; color: var(--text2); }
+    .btn-ghost:hover { background: var(--bg3); }
+
+    /* ── Invoice list ── */
+    .inv-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 0;
+      border-bottom: 1px solid var(--border);
+      cursor: pointer;
+      transition: background .1s;
+    }
+    .inv-item:last-child { border-bottom: none; }
+    .inv-item:hover { background: rgba(255,255,255,.03); margin: 0 -16px; padding: 10px 16px; }
+    .inv-icon {
+      width: 32px;
+      height: 32px;
+      border-radius: 7px;
+      background: rgba(59,130,246,.15);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+      flex-shrink: 0;
+    }
+    .inv-no { font-size: 13px; font-weight: 700; }
+    .inv-meta { font-size: 11px; color: var(--text3); margin-top: 2px; }
+    .inv-amount { font-size: 13px; font-weight: 700; color: var(--orange); margin-left: auto; white-space: nowrap; }
+    .tag {
+      display: inline-block;
+      padding: 2px 7px;
+      border-radius: 5px;
+      font-size: 10px;
+      font-weight: 600;
+    }
+    .tag-draft     { background: rgba(107,112,153,.2); color: var(--text2); }
+    .tag-confirmed { background: rgba(59,130,246,.2);  color: #93c5fd; }
+    .tag-paid      { background: rgba(34,197,94,.2);   color: #86efac; }
+
+    /* ── Empty / loading ── */
+    .empty {
+      text-align: center;
+      padding: 40px 20px;
+      color: var(--text3);
+    }
+    .empty .icon { font-size: 40px; margin-bottom: 10px; }
+    .empty .msg { font-size: 14px; }
+    .empty .sub { font-size: 12px; margin-top: 4px; }
+
+    .spinner {
+      width: 24px; height: 24px;
+      border: 3px solid var(--border2);
+      border-top-color: var(--orange);
+      border-radius: 50%;
+      animation: spin .7s linear infinite;
+      margin: 0 auto;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Modal ── */
+    .modal-bg {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,.7);
+      display: flex;
+      align-items: flex-start;
+      justify-content: center;
+      z-index: 1000;
+      padding: 20px 12px;
+      overflow-y: auto;
+    }
+    .modal {
+      background: var(--bg2);
+      border: 1px solid var(--border2);
+      border-radius: 14px;
+      width: 100%;
+      max-width: 580px;
+      flex-shrink: 0;
+    }
+    .modal-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16px 20px;
+      border-bottom: 1px solid var(--border);
+    }
+    .modal-head h3 { font-size: 15px; font-weight: 700; }
+    .modal-close {
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      width: 28px;
+      height: 28px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 18px;
+      cursor: pointer;
+      color: var(--text2);
+      line-height: 1;
+    }
+    .modal-close:hover { background: var(--border2); }
+    .modal-body { padding: 16px 20px 20px; }
+
+    .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 14px; margin-bottom: 12px; }
+    .form-row { display: flex; flex-direction: column; gap: 4px; }
+    .form-row label { font-size: 11px; color: var(--text3); text-transform: uppercase; letter-spacing: .4px; }
+    .form-row input,
+    .form-row select,
+    .form-row textarea {
+      background: var(--bg3);
+      border: 1px solid var(--border2);
+      border-radius: 7px;
+      padding: 8px 10px;
+      font-size: 13px;
+      color: var(--text);
+      outline: none;
+      width: 100%;
+      transition: border-color .15s;
+    }
+    .form-row input:focus,
+    .form-row select:focus,
+    .form-row textarea:focus { border-color: var(--orange); }
+    .form-row select { appearance: auto; cursor: pointer; }
+    .form-row textarea { resize: vertical; min-height: 60px; }
+    .form-row option { background: var(--bg2); }
+
+    .cust-info-bar {
+      background: rgba(232,104,58,.1);
+      border: 1px solid rgba(232,104,58,.25);
+      border-radius: 8px;
+      padding: 8px 12px;
+      margin-bottom: 14px;
+      font-size: 13px;
+    }
+    .cust-info-bar strong { color: var(--text); }
+    .cust-info-bar .plate { color: var(--orange); font-family: monospace; font-weight: 800; margin-left: 8px; }
+    .cust-info-bar .meta { color: var(--text3); margin-left: 6px; font-size: 12px; }
+
+    .type-badge {
+      border-radius: 8px;
+      padding: 8px 12px;
+      margin-bottom: 12px;
+      font-size: 12px;
+      font-weight: 600;
+    }
+    .type-onew     { background: rgba(59,130,246,.15);  color: #93c5fd; }
+    .type-kc-engine  { background: rgba(34,197,94,.15);  color: #86efac; }
+    .type-kc-gearbox { background: rgba(232,104,58,.15); color: var(--orange2); }
+
+    /* ── Service catalog ── */
+    .section-label {
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .5px;
+      color: var(--text3);
+      margin-bottom: 8px;
+    }
+    .cat-grid {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-bottom: 12px;
+    }
+    .cat-btn {
+      background: var(--bg3);
+      border: 1px solid var(--border2);
+      border-radius: 7px;
+      padding: 6px 12px;
+      font-size: 12px;
+      color: var(--text2);
+      cursor: pointer;
+      transition: all .15s;
+      white-space: nowrap;
+    }
+    .cat-btn:hover { border-color: var(--orange); color: var(--text); }
+    .cat-btn.active { background: rgba(232,104,58,.2); border-color: var(--orange); color: var(--orange); }
+
+    .job-list { margin-bottom: 12px; }
+    .job-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 7px 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .job-item:last-child { border-bottom: none; }
+    .job-item input[type=checkbox] {
+      width: 16px;
+      height: 16px;
+      accent-color: var(--orange);
+      flex-shrink: 0;
+      cursor: pointer;
+    }
+    .job-item-name {
+      flex: 1;
+      font-size: 13px;
+      color: var(--text);
+      cursor: pointer;
+      min-width: 0;
+    }
+    .job-item-name:hover { color: var(--orange); }
+    .job-item-price {
+      width: 80px;
+      background: var(--bg3);
+      border: 1px solid var(--border2);
+      border-radius: 6px;
+      padding: 4px 8px;
+      font-size: 12px;
+      text-align: right;
+      color: var(--text);
+      outline: none;
+      flex-shrink: 0;
+    }
+    .job-item-price:focus { border-color: var(--orange); }
+
+    /* ── Cart ── */
+    .cart-section {
+      background: var(--bg3);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 12px;
+      margin-bottom: 12px;
+    }
+    .cart-label {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: .5px;
+      color: var(--text3);
+      margin-bottom: 8px;
+    }
+    .cart-empty { font-size: 12px; color: var(--text3); padding: 8px 0; }
+    .cart-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 5px 0;
+      border-bottom: 1px solid var(--border);
+    }
+    .cart-item:last-of-type { border-bottom: none; }
+    .cart-item-name { flex: 1; font-size: 13px; min-width: 0; }
+    .cart-item-price {
+      width: 80px;
+      background: var(--bg2);
+      border: 1px solid var(--border2);
+      border-radius: 5px;
+      padding: 3px 6px;
+      font-size: 12px;
+      text-align: right;
+      color: var(--text);
+      outline: none;
+    }
+    .cart-item-price:focus { border-color: var(--orange); }
+    .cart-item-del {
+      background: none;
+      border: none;
+      color: var(--text3);
+      cursor: pointer;
+      font-size: 16px;
+      line-height: 1;
+      padding: 2px 4px;
+      border-radius: 4px;
+      flex-shrink: 0;
+    }
+    .cart-item-del:hover { color: var(--red); background: rgba(239,68,68,.1); }
+    .cart-discount {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 0;
+      border-top: 1px solid var(--border);
+      margin-top: 6px;
+    }
+    .cart-discount span { font-size: 12px; color: var(--text3); flex: 1; }
+    .cart-discount input {
+      width: 80px;
+      background: var(--bg2);
+      border: 1px solid var(--border2);
+      border-radius: 5px;
+      padding: 3px 6px;
+      font-size: 12px;
+      text-align: right;
+      color: var(--text);
+      outline: none;
+    }
+    .cart-discount input:focus { border-color: var(--orange); }
+    .cart-total {
+      display: flex;
+      justify-content: space-between;
+      padding: 10px 0 2px;
+      font-size: 16px;
+      font-weight: 800;
+      color: var(--orange);
+    }
+
+    .form-actions {
+      display: flex;
+      gap: 10px;
+      justify-content: flex-end;
+      margin-top: 16px;
+      padding-top: 12px;
+      border-top: 1px solid var(--border);
+    }
+
+    /* ── New customer note at top ── */
+    .new-cust-note {
+      background: rgba(245,158,11,.12);
+      border: 1px solid rgba(245,158,11,.3);
+      border-radius: 8px;
+      padding: 10px 14px;
+      margin-bottom: 16px;
+      font-size: 12px;
+      color: #fcd34d;
+    }
+
+    /* ── Camera ── */
+    .cam-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+      margin-bottom: 16px;
+    }
+    .cam-card-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border);
+    }
+    .cam-card-head-left {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--text);
+    }
+    .cam-card-head-left span { font-size: 16px; }
+    .cam-btn-row {
+      display: flex;
+      gap: 8px;
+    }
+    .cam-body {
+      padding: 14px 16px;
+    }
+    .cam-wrap {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 16/9;
+      background: #000;
+      border-radius: 8px;
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 10px;
+    }
+    .cam-wrap video {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+    .cam-placeholder {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 8px;
+      color: var(--text3);
+    }
+    .cam-placeholder .icon { font-size: 36px; }
+    .cam-placeholder .msg { font-size: 12px; }
+    /* Scan overlay */
+    .scan-overlay {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      display: none;
+    }
+    .scan-overlay.active { display: block; }
+    .scan-frame {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: 70%;
+      height: 28%;
+      border: 2px solid rgba(232,104,58,.8);
+      border-radius: 6px;
+    }
+    /* corner brackets */
+    .scan-frame::before,
+    .scan-frame::after {
+      content: '';
+      position: absolute;
+      width: 16px;
+      height: 16px;
+      border-color: var(--orange);
+      border-style: solid;
+    }
+    .scan-frame::before {
+      top: -2px; left: -2px;
+      border-width: 3px 0 0 3px;
+      border-radius: 4px 0 0 0;
+    }
+    .scan-frame::after {
+      bottom: -2px; right: -2px;
+      border-width: 0 3px 3px 0;
+      border-radius: 0 0 4px 0;
+    }
+    .scan-line {
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      width: calc(70% - 4px);
+      height: 2px;
+      background: linear-gradient(90deg, transparent, var(--orange), transparent);
+      animation: scanMove 2s ease-in-out infinite;
+    }
+    @keyframes scanMove {
+      0%   { margin-top: calc(-14% + 4px); opacity: 1; }
+      50%  { margin-top: calc(14% - 4px);  opacity: 1; }
+      100% { margin-top: calc(-14% + 4px); opacity: 1; }
+    }
+    .ocr-status {
+      font-size: 11px;
+      color: var(--text3);
+      text-align: center;
+      min-height: 18px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+    }
+    .ocr-status.found { color: var(--green); font-weight: 700; }
+    .ocr-status.scanning { color: var(--orange); }
+    .ocr-dot {
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: var(--orange);
+      animation: blink 1s ease-in-out infinite;
+    }
+    @keyframes blink { 0%,100% { opacity: 1; } 50% { opacity: .2; } }
+
+    /* divider */
+    .input-divider {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 14px;
+      color: var(--text3);
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: .5px;
+    }
+    .input-divider::before,
+    .input-divider::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: var(--border);
+    }
+
+    /* ── Invoice detail expand ── */
+    .inv-item { cursor: pointer; }
+    .inv-item-chevron {
+      font-size: 11px;
+      color: var(--text3);
+      margin-left: 8px;
+      transition: transform .2s;
+      flex-shrink: 0;
+    }
+    .inv-item-chevron.open { transform: rotate(180deg); }
+    .inv-items-detail {
+      background: var(--bg3);
+      border-left: 2px solid var(--border2);
+      margin: 0 0 2px 44px;
+      border-radius: 0 0 6px 6px;
+      overflow: hidden;
+    }
+    .inv-detail-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 5px 12px;
+      font-size: 12px;
+      color: var(--text2);
+      border-bottom: 1px solid var(--border);
+    }
+    .inv-detail-row:last-child { border-bottom: none; }
+    .inv-detail-row span:last-child { color: var(--orange); font-weight: 600; white-space: nowrap; margin-left: 8px; }
+
+    /* ── Manual item entry ── */
+    .manual-add-row {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+    .manual-desc {
+      flex: 1;
+      background: var(--bg3);
+      border: 1px solid var(--border2);
+      border-radius: 7px;
+      padding: 7px 10px;
+      font-size: 13px;
+      color: var(--text);
+      outline: none;
+      min-width: 0;
+    }
+    .manual-desc:focus { border-color: var(--orange); }
+    .manual-price {
+      width: 88px;
+      background: var(--bg3);
+      border: 1px solid var(--border2);
+      border-radius: 7px;
+      padding: 7px 10px;
+      font-size: 13px;
+      color: var(--text);
+      outline: none;
+      flex-shrink: 0;
+    }
+    .manual-price:focus { border-color: var(--orange); }
+
+    /* ── Phone action buttons ── */
+    a.btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      text-decoration: none;
+    }
+    .phone-actions { display: flex; gap: 8px; margin-top: 6px; }
+
+    /* responsive */
+    @media (max-width: 480px) {
+      .form-grid { grid-template-columns: 1fr; }
+      .info-grid { grid-template-columns: 1fr; }
+      .scan-frame { width: 82%; height: 26%; }
+      .scan-line { width: calc(82% - 4px); }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <img src="https://dbgpgoxbjkyvmjeurdiz.supabase.co/storage/v1/object/public/assets/logo.png"
+           onerror="this.style.display='none'"
+           alt="K-Cars">
+      <div>
+        <div class="header-title">🚗 K-Cars Plate Scanner</div>
+        <div class="header-sub">Scan plate → view history → create invoice</div>
+      </div>
+    </div>
+
+    <!-- ── Camera Section ── -->
+    <div class="cam-card">
+      <div class="cam-card-head">
+        <div class="cam-card-head-left">
+          <span>📷</span> Camera Scan 摄像头扫描
+        </div>
+        <div class="cam-btn-row">
+          <input type="file" id="photoInput" accept="image/*" style="display:none" onchange="handlePhotoUpload(this)">
+          <button class="btn btn-sm" onclick="document.getElementById('photoInput').click()">🖼 Photo</button>
+          <button id="camStartBtn" class="btn btn-sm btn-primary" onclick="startCamera()">▶ Start Camera</button>
+          <button id="camStopBtn"  class="btn btn-sm" onclick="stopCamera()" style="display:none">⏹ Stop</button>
+        </div>
+      </div>
+      <div class="cam-body">
+        <div class="cam-wrap" id="camWrap">
+          <div class="cam-placeholder" id="camPlaceholder">
+            <div class="icon">📷</div>
+            <div class="msg">Press Start Camera to scan a plate 按开始摄像头扫描车牌</div>
+          </div>
+          <video id="camVideo" autoplay muted playsinline style="display:none"></video>
+          <div class="scan-overlay" id="scanOverlay">
+            <div class="scan-frame"></div>
+            <div class="scan-line"></div>
+          </div>
+        </div>
+        <div id="ocrStatus" class="ocr-status">Ready 就绪</div>
+      </div>
+    </div>
+
+    <!-- ── Manual Input ── -->
+    <div class="input-divider">or enter plate manually 或手动输入</div>
+    <div class="search-wrap">
+      <input id="plateInput" class="search-input" type="text"
+        placeholder="Enter plate e.g. SBA1234A"
+        autocapitalize="characters" autocorrect="off" spellcheck="false"
+        oninput="this.value = this.value.toUpperCase()"
+        onkeydown="if(event.key==='Enter') searchPlate()" />
+      <button class="search-btn" onclick="searchPlate()">🔍</button>
+    </div>
+
+    <!-- Result area -->
+    <div id="result"></div>
+
+    <!-- Hidden canvas for OCR -->
+    <canvas id="ocrCanvas" style="display:none"></canvas>
+  </div>
+
+  <!-- ── New Customer Modal ── -->
+  <div id="newCustModal" class="modal-bg" style="display:none" onclick="bgClose(event,'newCustModal')">
+    <div class="modal">
+      <div class="modal-head">
+        <h3>➕ New Customer 新建客户</h3>
+        <button class="modal-close" onclick="closeModal('newCustModal')">×</button>
+      </div>
+      <div class="modal-body">
+        <div id="newCustNote" class="new-cust-note" style="display:none"></div>
+        <div class="form-grid">
+          <div class="form-row" style="grid-column:1/-1">
+            <label>Name 姓名 *</label>
+            <input id="nc_name" placeholder="Customer name" />
+          </div>
+          <div class="form-row">
+            <label>Car Plate 车牌 *</label>
+            <input id="nc_plate" placeholder="SBA1234A" style="text-transform:uppercase"
+              oninput="this.value=this.value.toUpperCase()" />
+          </div>
+          <div class="form-row">
+            <label>Phone 电话</label>
+            <input id="nc_phone" placeholder="+65 XXXX XXXX" type="tel" />
+          </div>
+          <div class="form-row">
+            <label>Car Make 品牌</label>
+            <input id="nc_make" placeholder="e.g. Toyota" />
+          </div>
+          <div class="form-row">
+            <label>Car Model 车型</label>
+            <input id="nc_model" placeholder="e.g. Camry" />
+          </div>
+          <div class="form-row">
+            <label>Car Year 年份</label>
+            <input id="nc_year" placeholder="e.g. 2018" type="number" />
+          </div>
+          <div class="form-row">
+            <label>Car Color 颜色</label>
+            <input id="nc_color" placeholder="e.g. White" />
+          </div>
+        </div>
+        <div class="form-actions">
+          <button class="btn" onclick="closeModal('newCustModal')">Cancel 取消</button>
+          <button class="btn btn-primary" id="saveCustBtn" onclick="saveNewCustomer()">✓ Save &amp; Open Invoice 保存并开单</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Invoice Modal ── -->
+  <div id="invoiceModal" class="modal-bg" style="display:none" onclick="bgClose(event,'invoiceModal')">
+    <div class="modal">
+      <div class="modal-head">
+        <h3 id="invModalTitle">📋 New Invoice 新建发票</h3>
+        <button class="modal-close" onclick="closeModal('invoiceModal')">×</button>
+      </div>
+      <div class="modal-body">
+        <!-- Customer info bar -->
+        <div id="invCustBar" class="cust-info-bar"></div>
+
+        <!-- Type badge -->
+        <div id="invTypeBadge" class="type-badge type-onew"></div>
+
+        <div class="form-grid">
+          <div class="form-row">
+            <label>Invoice No 发票号</label>
+            <input id="inv_no" />
+          </div>
+          <div class="form-row">
+            <label>Date 日期</label>
+            <input type="date" id="inv_date" />
+          </div>
+          <div class="form-row">
+            <label>Advisor 顾问</label>
+            <select id="inv_advisor"></select>
+          </div>
+          <div class="form-row">
+            <label>Mechanic 技师</label>
+            <select id="inv_mechanic"></select>
+          </div>
+          <div class="form-row">
+            <label>Mileage 里程</label>
+            <input id="inv_mileage" placeholder="e.g. 93718" />
+          </div>
+          <div class="form-row">
+            <label>Chassis No. 底盘号</label>
+            <input id="inv_chassis" placeholder="optional" />
+          </div>
+          <div class="form-row">
+            <label>Invoice Type 发票类型</label>
+            <select id="inv_type" onchange="updateTypeBadge()">
+              <option value="auto">Auto-detect 自动识别</option>
+              <option value="onew">1 World — Regular 普通维修</option>
+              <option value="kc_engine">K-Cars — Engine 引擎大修</option>
+              <option value="kc_gearbox">K-Cars — Gearbox 变速箱</option>
+            </select>
+          </div>
+          <div class="form-row">
+            <label>Status 状态</label>
+            <select id="inv_status">
+              <option value="draft">Draft 草稿</option>
+              <option value="confirmed">Confirmed 已确认</option>
+              <option value="paid">Paid 已付款</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Service catalog -->
+        <div class="section-label">Select Services 选择维修项目</div>
+        <div id="catGrid" class="cat-grid"></div>
+        <div id="catNoCatalog" style="display:none;font-size:11px;color:var(--text3);margin-bottom:8px">
+          ⚠️ No catalog data — use manual entry below 暂无服务目录，请手动输入
+        </div>
+        <div id="catItems" class="job-list"></div>
+
+        <!-- Manual item entry -->
+        <div class="manual-add-row">
+          <input id="manualDesc" class="manual-desc" placeholder="Service description 维修项目名称"
+            onkeydown="if(event.key==='Enter') addManualItem()" />
+          <input id="manualPrice" class="manual-price" type="number" placeholder="Price" min="0" step="0.01"
+            onkeydown="if(event.key==='Enter') addManualItem()" />
+          <button class="btn btn-sm btn-primary" onclick="addManualItem()">＋ Add</button>
+        </div>
+
+        <!-- Cart -->
+        <div class="cart-section">
+          <div class="cart-label">🛒 Selected Items <span id="cartCount"></span></div>
+          <div id="cartItems"><div class="cart-empty">Tick items above to add them here 勾选上方项目</div></div>
+          <div id="cartDiscount" style="display:none" class="cart-discount">
+            <span>Discount 折扣 (SGD $)</span>
+            <input type="number" id="inv_discount" value="0" min="0" oninput="recalcTotal()" />
+          </div>
+          <div id="cartTotal" class="cart-total" style="display:none">
+            <span>Invoice Total 总金额</span>
+            <span id="totalAmt">SGD $0.00</span>
+          </div>
+        </div>
+
+        <div class="form-row" style="margin-bottom:4px">
+          <label>Notes 备注</label>
+          <textarea id="inv_notes" placeholder="Additional notes..."></textarea>
+        </div>
+
+        <div class="form-actions">
+          <button class="btn" onclick="closeModal('invoiceModal')">Cancel 取消</button>
+          <button class="btn btn-primary" id="saveInvBtn" onclick="saveInvoice()">
+            ✓ Save Invoice 保存
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // ── Supabase setup ──────────────────────────────────────────────────────
+    const SUPABASE_URL = 'https://dbgpgoxbjkyvmjeurdiz.supabase.co'
+    const SUPABASE_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRiZ3Bnb3hiamt5dm1qZXVyZGl6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzgxODI1MzYsImV4cCI6MjA5Mzc1ODUzNn0.KE-R2byjfaMs5nk2ZzNX61_w1B-tMMIFPUIpyttK3Vs'
+    const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY)
+
+    const ADVISORS  = ['', 'JON', 'JIMMY', 'MENG', 'IVY', 'NORMAN', 'XIN', 'ZHU', 'TAO', 'XIONG']
+    const MECHANICS = ['', 'NORMAN', 'XIN', 'ZHU', 'TAO', 'XIONG', 'MENG']
+
+    // ── State ───────────────────────────────────────────────────────────────
+    let catalog   = []
+    let cart      = []
+    let activeCat = null
+    let currentCustomer = null
+
+    // Camera state
+    const PR_KEY      = '2475b719780ed001a2fd37ea81881d7aa2a0504a'
+    const PR_URL      = 'https://api.platerecognizer.com/v1/plate-reader/'
+    let cameraStream  = null
+    let ocrInterval   = null
+    let ocrBusy       = false
+
+    // ── Init ────────────────────────────────────────────────────────────────
+    window.addEventListener('DOMContentLoaded', () => {
+      loadCatalog()
+      populateSelects()
+      document.getElementById('plateInput').focus()
+    })
+
+    function populateSelects() {
+      const adv = document.getElementById('inv_advisor')
+      const mec = document.getElementById('inv_mechanic')
+      ADVISORS.forEach(a => {
+        const opt = document.createElement('option')
+        opt.value = a; opt.textContent = a || '— Advisor —'
+        adv.appendChild(opt)
+      })
+      MECHANICS.forEach(m => {
+        const opt = document.createElement('option')
+        opt.value = m; opt.textContent = m || '— Mechanic —'
+        mec.appendChild(opt)
+      })
+    }
+
+    async function loadCatalog() {
+      const { data, error } = await sb.from('service_catalog').select('*')
+        .eq('active', true).order('category').order('sort_order')
+      if (error) console.error('loadCatalog error:', error.message, error)
+      catalog = data || []
+      console.log('catalog loaded:', catalog.length, 'items')
+      return catalog
+    }
+
+    // ── Camera & Plate Recognizer API ───────────────────────────────────────
+    async function startCamera() {
+      try {
+        cameraStream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: 'environment', width: { ideal: 1280 }, height: { ideal: 720 } }
+        })
+      } catch (e) {
+        try { cameraStream = await navigator.mediaDevices.getUserMedia({ video: true }) }
+        catch (e2) { alert('Cannot access camera 无法使用摄像头: ' + e2.message); return }
+      }
+
+      const video = document.getElementById('camVideo')
+      video.srcObject = cameraStream
+      video.style.display = 'block'
+      document.getElementById('camPlaceholder').style.display = 'none'
+      document.getElementById('scanOverlay').classList.add('active')
+      document.getElementById('camStartBtn').style.display = 'none'
+      document.getElementById('camStopBtn').style.display = ''
+      setOcrStatus('Ready — point camera at plate 对准车牌', '')
+      ocrInterval = setInterval(captureAndRecognize, 2000)
+    }
+
+    function stopCamera() {
+      if (cameraStream) { cameraStream.getTracks().forEach(t => t.stop()); cameraStream = null }
+      clearInterval(ocrInterval); ocrInterval = null
+      const video = document.getElementById('camVideo')
+      video.srcObject = null; video.style.display = 'none'
+      document.getElementById('camPlaceholder').style.display = 'flex'
+      document.getElementById('scanOverlay').classList.remove('active')
+      document.getElementById('camStartBtn').style.display = ''
+      document.getElementById('camStopBtn').style.display = 'none'
+      setOcrStatus('Camera stopped 摄像头已关闭', '')
+    }
+
+    async function captureAndRecognize() {
+      if (ocrBusy) return
+      const video = document.getElementById('camVideo')
+      if (!video.srcObject || video.readyState < 2) return
+      ocrBusy = true
+      setOcrStatus('Scanning... 识别中', 'scanning')
+
+      const canvas = document.getElementById('ocrCanvas')
+      const vw = video.videoWidth, vh = video.videoHeight
+      // Crop to the scan frame area (centre 70% × 28%)
+      const cx = vw * 0.15, cy = vh * 0.36, cw = vw * 0.70, ch = vh * 0.28
+      canvas.width = cw; canvas.height = ch
+      canvas.getContext('2d').drawImage(video, cx, cy, cw, ch, 0, 0, cw, ch)
+
+      const blob = await new Promise(res => canvas.toBlob(res, 'image/jpeg', 0.92))
+      const plate = await recognizeBlob(blob)
+
+      if (plate) {
+        setOcrStatus('✓ Found: ' + plate, 'found')
+        document.getElementById('plateInput').value = plate
+        stopCamera()
+        await searchPlate()
+      } else {
+        setOcrStatus('Scanning... 识别中 — align plate with frame 对准扫描框', 'scanning')
+      }
+      ocrBusy = false
+    }
+
+    async function handlePhotoUpload(input) {
+      const file = input.files[0]
+      if (!file) return
+      input.value = ''
+      setOcrStatus('Reading photo... 识别图片', 'scanning')
+
+      const plate = await recognizeBlob(file)
+      if (plate) {
+        setOcrStatus('✓ Found: ' + plate, 'found')
+        document.getElementById('plateInput').value = plate
+        await searchPlate()
+      } else {
+        setOcrStatus('No plate found in photo 未识别到车牌', '')
+        alert('No plate found in this photo.\n未在图片中识别到车牌，请尝试更清晰的图片。')
+      }
+    }
+
+    async function recognizeBlob(blob) {
+      try {
+        const fd = new FormData()
+        fd.append('upload', blob, 'plate.jpg')
+        fd.append('regions', 'sg')   // Singapore hint for better accuracy
+        const res = await fetch(PR_URL, {
+          method: 'POST',
+          headers: { 'Authorization': 'Token ' + PR_KEY },
+          body: fd
+        })
+        if (!res.ok) {
+          const err = await res.text()
+          console.warn('Plate Recognizer error:', res.status, err)
+          setOcrStatus('API error ' + res.status, '')
+          return null
+        }
+        const json = await res.json()
+        if (json.results && json.results.length > 0) {
+          return json.results[0].plate.toUpperCase().replace(/\s+/g, '')
+        }
+      } catch (e) {
+        console.warn('recognizeBlob error:', e)
+        setOcrStatus('Network error — check connection', '')
+      }
+      return null
+    }
+
+    function setOcrStatus(msg, cls) {
+      const el = document.getElementById('ocrStatus')
+      el.className = 'ocr-status' + (cls ? ' ' + cls : '')
+      el.innerHTML = cls === 'scanning'
+        ? '<div class="ocr-dot"></div>' + msg
+        : msg
+    }
+
+    // ── Search ──────────────────────────────────────────────────────────────
+    async function searchPlate() {
+      const plate = document.getElementById('plateInput').value.trim().toUpperCase()
+      if (!plate) return
+      const resultEl = document.getElementById('result')
+      resultEl.innerHTML = '<div class="card"><div class="card-body"><div class="spinner"></div></div></div>'
+
+      const { data: cust } = await sb.from('customers').select('*')
+        .ilike('car_plate', plate).maybeSingle()
+
+      if (!cust) {
+        resultEl.innerHTML = `
+          <div class="card">
+            <div class="card-body">
+              <div class="empty">
+                <div class="icon">🔍</div>
+                <div class="msg">No customer found for <strong>${plate}</strong></div>
+                <div class="sub" style="margin-top:12px">
+                  <button class="btn btn-primary" onclick="openNewCustomer('${plate}')">
+                    ➕ Add New Customer 新建客户
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>`
+        return
+      }
+
+      currentCustomer = cust
+      await renderCustomer(cust)
+    }
+
+    async function renderCustomer(cust) {
+      const { data: invoices } = await sb.from('invoices')
+        .select('*, invoice_items(*)')
+        .eq('customer_id', cust.id)
+        .order('date', { ascending: false })
+
+      const invList = (invoices || []).map((inv, idx) => {
+        const tag = { draft: 'tag-draft', confirmed: 'tag-confirmed', paid: 'tag-paid' }[inv.status] || 'tag-draft'
+        const statusLabel = { draft: 'Draft', confirmed: 'Confirmed', paid: 'Paid' }[inv.status] || inv.status
+        const items = inv.invoice_items || []
+        const itemsHtml = items.map(i => `
+          <div style="display:flex;justify-content:space-between;padding:4px 0;font-size:12px;border-bottom:1px solid rgba(255,255,255,0.04)">
+            <span style="color:#ccc">${i.description}</span>
+            <span style="color:#f39c12">$${parseFloat(i.amount||0).toFixed(2)}</span>
+          </div>`).join('')
+        return `
+          <div class="inv-item" onclick="toggleDetail('${inv.id}')" style="cursor:pointer">
+            <div class="inv-icon">🧾</div>
+            <div style="flex:1;min-width:0">
+              <div class="inv-no">${inv.invoice_no}</div>
+              <div class="inv-meta">📅 ${inv.date} &nbsp;🔧 ${inv.technician || inv.mechanic || 'N/A'}
+                <span class="tag ${tag}" style="margin-left:6px">${statusLabel}</span>
+              </div>
+            </div>
+            <div class="inv-amount">SGD $${parseFloat(inv.total||0).toFixed(2)}</div>
+          </div>
+          <div id="detail_${inv.id}" style="display:${idx===0?'block':'none'};padding:8px 12px;background:rgba(0,0,0,0.15);border-top:1px solid rgba(255,255,255,0.06)">
+            ${itemsHtml}
+          </div>`
+      }).join('')
+
+      const phoneHtml = cust.phone ? `
+        <div style="display:flex;gap:8px;margin-top:8px">
+          <a href="tel:${cust.phone}" class="btn btn-sm" style="text-decoration:none;flex:1;text-align:center">📞 Call</a>
+          <a href="https://wa.me/65${cust.phone.replace(/\D/g,'')}" class="btn btn-sm" style="text-decoration:none;flex:1;text-align:center" target="_blank">💬 WhatsApp</a>
+        </div>` : ''
+
+      document.getElementById('result').innerHTML = `
+        <div class="card">
+          <div class="card-head">
+            <div class="card-head-left">
+              <div class="card-head-icon">👤</div>
+              <div>
+                <div class="card-title">${cust.name}</div>
+                <div class="card-sub">${cust.car_make || ''} ${cust.car_model || ''}</div>
+              </div>
+            </div>
+            <div class="plate-badge">${cust.car_plate}</div>
+          </div>
+          <div class="card-body">
+            <div class="info-grid" style="margin-bottom:4px">
+              ${cust.car_year  ? `<div class="info-item"><label>Year 年份</label><span>${cust.car_year}</span></div>` : ''}
+              ${cust.car_color ? `<div class="info-item"><label>Color 颜色</label><span>${cust.car_color}</span></div>` : ''}
+              ${cust.phone     ? `<div class="info-item"><label>Phone 电话</label><span>${cust.phone}</span></div>` : ''}
+            </div>
+            ${phoneHtml}
+            <button class="btn btn-primary" style="margin:14px 0 16px;width:100%" onclick="openInvoiceModal(currentCustomer)">
+              📋 New Invoice 开新单
+            </button>
+            <div class="section-label">Visit History 维修记录 (${(invoices||[]).length})</div>
+            ${invList || '<div class="cart-empty">No invoices yet 暂无记录</div>'}
+          </div>
+        </div>`
+    }
+
+    function toggleDetail(id) {
+      const el = document.getElementById('detail_' + id)
+      if (el) el.style.display = el.style.display === 'none' ? 'block' : 'none'
+    }
+
+    function addManualItem() {
+      const desc  = document.getElementById('manualDesc').value.trim()
+      const price = parseFloat(document.getElementById('manualPrice').value) || 0
+      if (!desc) { document.getElementById('manualDesc').focus(); return }
+      cart.push({ desc, cat: 'Manual', cost: price })
+      document.getElementById('manualDesc').value = ''
+      document.getElementById('manualPrice').value = ''
+      document.getElementById('manualDesc').focus()
+      renderCart()
+      updateTypeBadge()
+    }
+
+    // ── New Customer ─────────────────────────────────────────────────────────
+    function openNewCustomer(plate = '') {
+      document.getElementById('nc_plate').value = plate
+      document.getElementById('nc_name').value = ''
+      document.getElementById('nc_phone').value = ''
+      document.getElementById('nc_make').value = ''
+      document.getElementById('nc_model').value = ''
+      document.getElementById('nc_year').value = ''
+      document.getElementById('nc_color').value = ''
+      if (plate) {
+        const note = document.getElementById('newCustNote')
+        note.textContent = `🔍 No customer found for plate ${plate} — fill in details to create`
+        note.style.display = 'block'
+      } else {
+        document.getElementById('newCustNote').style.display = 'none'
+      }
+      document.getElementById('newCustModal').style.display = 'flex'
+      setTimeout(() => document.getElementById('nc_name').focus(), 100)
+    }
+
+    async function saveNewCustomer() {
+      const name  = document.getElementById('nc_name').value.trim()
+      const plate = document.getElementById('nc_plate').value.trim().toUpperCase()
+      if (!name || !plate) { alert('Name and plate are required. 姓名和车牌必填。'); return }
+
+      const btn = document.getElementById('saveCustBtn')
+      btn.disabled = true; btn.textContent = 'Saving...'
+
+      const { data, error } = await sb.from('customers').upsert({
+        name,
+        car_plate: plate,
+        phone: document.getElementById('nc_phone').value.trim() || null,
+        car_make: document.getElementById('nc_make').value.trim() || null,
+        car_model: document.getElementById('nc_model').value.trim() || null,
+        car_year: document.getElementById('nc_year').value || null,
+        car_color: document.getElementById('nc_color').value.trim() || null,
+      }, { onConflict: 'car_plate' }).select().single()
+
+      btn.disabled = false; btn.textContent = '✓ Save & Open Invoice 保存并开单'
+
+      if (error) { alert('Error: ' + error.message); return }
+
+      currentCustomer = data
+      closeModal('newCustModal')
+      document.getElementById('plateInput').value = plate
+      await renderCustomer(data)
+      openInvoiceModal(data)
+    }
+
+    // ── Invoice Modal ────────────────────────────────────────────────────────
+    async function openInvoiceModal(cust) {
+      currentCustomer = cust
+      cart = []
+      activeCat = null
+
+      // Always reload catalog fresh when opening modal
+      await loadCatalog()
+
+      // Customer bar
+      document.getElementById('invCustBar').innerHTML = `
+        <strong>${cust.name}</strong>
+        <span class="plate">${cust.car_plate}</span>
+        <span class="meta">${cust.car_make || ''} ${cust.car_model || ''}</span>`
+
+      // Auto-gen invoice no
+      const invNo = await generateInvoiceNo()
+      document.getElementById('inv_no').value = invNo
+
+      // Default date = today Singapore time
+      document.getElementById('inv_date').value = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Singapore' })
+
+      // Reset fields
+      document.getElementById('inv_advisor').value = ''
+      document.getElementById('inv_mechanic').value = ''
+      document.getElementById('inv_mileage').value = ''
+      document.getElementById('inv_chassis').value = ''
+      document.getElementById('inv_type').value = 'auto'
+      document.getElementById('inv_status').value = 'draft'
+      document.getElementById('inv_notes').value = ''
+      document.getElementById('inv_discount').value = '0'
+
+      // Build category buttons
+      const cats = [...new Set(catalog.map(c => c.category))]
+      const noCatalog = cats.length === 0
+      document.getElementById('catNoCatalog').style.display = noCatalog ? '' : 'none'
+      document.getElementById('catGrid').innerHTML = cats.map(cat => {
+        const icon = catalog.find(c => c.category === cat)?.category_icon || '🔧'
+        return `<button class="cat-btn" onclick="toggleCat('${cat}')" id="catBtn_${CSS.escape(cat)}">${icon} ${cat}</button>`
+      }).join('')
+
+      document.getElementById('catItems').innerHTML = ''
+      document.getElementById('manualDesc').value = ''
+      document.getElementById('manualPrice').value = ''
+      renderCart()
+      updateTypeBadge()
+
+      document.getElementById('invoiceModal').style.display = 'flex'
+    }
+
+    async function generateInvoiceNo() {
+      const prefix = 'INV' + new Date().getFullYear().toString().slice(2)
+      const { count } = await sb.from('invoices').select('*', { count: 'exact', head: true })
+        .ilike('invoice_no', `${prefix}%`)
+      return `${prefix}${String((count || 0) + 1).padStart(4, '0')}`
+    }
+
+    function toggleCat(cat) {
+      if (activeCat === cat) {
+        activeCat = null
+        document.getElementById('catItems').innerHTML = ''
+        document.querySelectorAll('.cat-btn').forEach(b => b.classList.remove('active'))
+      } else {
+        activeCat = cat
+        document.querySelectorAll('.cat-btn').forEach(b => b.classList.remove('active'))
+        document.getElementById('catBtn_' + CSS.escape(cat))?.classList.add('active')
+        renderCatItems(cat)
+      }
+    }
+
+    function renderCatItems(cat) {
+      const items = catalog.filter(c => c.category === cat)
+      document.getElementById('catItems').innerHTML = items.map(item => {
+        const inCart = cart.some(c => c.desc === item.name && c.cat === cat)
+        const cartItem = cart.find(c => c.desc === item.name)
+        const price = cartItem ? cartItem.cost : (item.default_price || 0)
+        return `
+          <div class="job-item" id="jobItem_${item.id}">
+            <input type="checkbox" ${inCart ? 'checked' : ''}
+              onchange="toggleItem(${JSON.stringify(item.id)}, ${JSON.stringify(item.name)}, '${cat}', ${item.default_price || 0})" />
+            <label class="job-item-name" onclick="toggleItem(${JSON.stringify(item.id)}, ${JSON.stringify(item.name)}, '${cat}', ${item.default_price || 0})">${item.name}</label>
+            <input type="number" class="job-item-price" value="${price}"
+              oninput="updateCartPrice(${JSON.stringify(item.name)}, this.value)" min="0" />
+          </div>`
+      }).join('')
+    }
+
+    function toggleItem(id, name, cat, defaultPrice) {
+      const idx = cart.findIndex(c => c.desc === name && c.cat === cat)
+      if (idx >= 0) {
+        cart.splice(idx, 1)
+      } else {
+        cart.push({ desc: name, cat, cost: parseFloat(defaultPrice || 0) })
+      }
+      if (activeCat === cat) renderCatItems(cat)
+      renderCart()
+      updateTypeBadge()
+    }
+
+    function updateCartPrice(name, val) {
+      const idx = cart.findIndex(c => c.desc === name)
+      if (idx >= 0) { cart[idx].cost = parseFloat(val) || 0 }
+      recalcTotal()
+    }
+
+    function renderCart() {
+      const el = document.getElementById('cartItems')
+      const countEl = document.getElementById('cartCount')
+      countEl.textContent = cart.length ? `(${cart.length})` : ''
+
+      if (!cart.length) {
+        el.innerHTML = '<div class="cart-empty">Tick items above to add them here 勾选上方项目</div>'
+        document.getElementById('cartDiscount').style.display = 'none'
+        document.getElementById('cartTotal').style.display = 'none'
+        return
+      }
+
+      el.innerHTML = cart.map((item, i) => `
+        <div class="cart-item">
+          <div class="cart-item-name">${item.desc}</div>
+          <input type="number" class="cart-item-price" value="${item.cost}"
+            oninput="updateCartIdx(${i}, this.value)" min="0" />
+          <button class="cart-item-del" onclick="removeCartItem(${i})">×</button>
+        </div>`).join('')
+
+      document.getElementById('cartDiscount').style.display = 'flex'
+      document.getElementById('cartTotal').style.display = 'flex'
+      recalcTotal()
+    }
+
+    function updateCartIdx(i, val) {
+      cart[i].cost = parseFloat(val) || 0
+      recalcTotal()
+      if (activeCat) renderCatItems(activeCat)
+    }
+
+    function removeCartItem(i) {
+      cart.splice(i, 1)
+      renderCart()
+      if (activeCat) renderCatItems(activeCat)
+      updateTypeBadge()
+    }
+
+    function recalcTotal() {
+      const subtotal = cart.reduce((a, c) => a + c.cost, 0)
+      const discount = parseFloat(document.getElementById('inv_discount').value || 0)
+      const total = Math.max(0, subtotal - discount)
+      document.getElementById('totalAmt').textContent = `SGD $${total.toFixed(2)}`
+    }
+
+    function detectType() {
+      const descs = cart.map(i => i.desc.toLowerCase())
+      if (descs.some(d => d.includes('gearbox') || d.includes('transmission'))) return 'kc_gearbox'
+      if (descs.some(d => d.includes('engine overhaul'))) return 'kc_engine'
+      return 'onew'
+    }
+
+    function updateTypeBadge() {
+      const sel = document.getElementById('inv_type').value
+      const type = sel === 'auto' ? detectType() : sel
+      const badge = document.getElementById('invTypeBadge')
+      const labels = {
+        onew:       '📄 1 World — Regular 普通维修',
+        kc_engine:  '📄 K-Cars — Engine 引擎大修',
+        kc_gearbox: '📄 K-Cars — Gearbox 变速箱 (含保修)',
+      }
+      badge.textContent = labels[type] + (sel === 'auto' ? '  (auto-detected 自动识别)' : '  (manual 手动)')
+      badge.className = 'type-badge ' + {
+        onew: 'type-onew', kc_engine: 'type-kc-engine', kc_gearbox: 'type-kc-gearbox'
+      }[type]
+    }
+
+    async function saveInvoice() {
+      if (!cart.length) { alert('Please add at least one item. 请至少添加一项。'); return }
+
+      const btn = document.getElementById('saveInvBtn')
+      btn.disabled = true; btn.textContent = 'Saving...'
+
+      const invType = document.getElementById('inv_type').value
+      const detectedType = invType === 'auto' ? detectType() : invType
+      const subtotal = cart.reduce((a, c) => a + c.cost, 0)
+      const discount = parseFloat(document.getElementById('inv_discount').value || 0)
+      const total = Math.max(0, subtotal - discount)
+
+      const advisor  = document.getElementById('inv_advisor').value
+      const mechanic = document.getElementById('inv_mechanic').value
+
+      const invRow = {
+        customer_id:  currentCustomer.id,
+        invoice_no:   document.getElementById('inv_no').value,
+        date:         document.getElementById('inv_date').value,
+        advisor,
+        mechanic,
+        technician:   [advisor, mechanic].filter(Boolean).join(', '),
+        mileage:      document.getElementById('inv_mileage').value || null,
+        chassis_no:   document.getElementById('inv_chassis').value || null,
+        notes:        document.getElementById('inv_notes').value || null,
+        discount,
+        subtotal:     subtotal.toFixed(2),
+        total:        total.toFixed(2),
+        status:       document.getElementById('inv_status').value,
+        invoice_type: detectedType,
+      }
+
+      const { data: inv, error } = await sb.from('invoices').insert(invRow).select().single()
+      if (error) {
+        btn.disabled = false; btn.textContent = '✓ Save Invoice 保存'
+        alert('Error saving invoice: ' + error.message)
+        return
+      }
+
+      const items = cart.map((c, i) => ({
+        invoice_id:  inv.id,
+        description: c.desc,
+        category:    c.cat,
+        qty:         1,
+        unit_price:  c.cost,
+        amount:      c.cost,
+        sort_order:  i,
+      }))
+      if (items.length) {
+        const { error: ie } = await sb.from('invoice_items').insert(items)
+        if (ie) { alert('Invoice saved but items failed: ' + ie.message) }
+      }
+
+      btn.disabled = false; btn.textContent = '✓ Save Invoice 保存'
+      closeModal('invoiceModal')
+      await renderCustomer(currentCustomer)
+    }
+
+    // ── Helpers ──────────────────────────────────────────────────────────────
+    function closeModal(id) {
+      document.getElementById(id).style.display = 'none'
+    }
+
+    function bgClose(e, id) {
+      if (e.target === e.currentTarget) closeModal(id)
+    }
+  </script>
+</body>
+</html>
