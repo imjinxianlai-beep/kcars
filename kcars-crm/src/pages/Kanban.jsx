@@ -1,12 +1,13 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
+import { Clock, Wrench, Package, CheckCircle2, CircleDollarSign, Columns3, RefreshCw } from 'lucide-react'
 
 const COLUMNS = [
-  { key: 'waiting',   label: 'Waiting 等待检查',  icon: '⏳', color: '#6B7280', bg: '#F9FAFB' },
-  { key: 'repairing', label: 'Repairing 维修中',  icon: '🔧', color: '#2563EB', bg: '#EFF6FF' },
-  { key: 'parts',     label: 'Parts Pending 等零件', icon: '📦', color: '#D97706', bg: '#FFFBEB' },
-  { key: 'completed', label: 'Completed 已完成',  icon: '✅', color: '#16A34A', bg: '#F0FDF4' },
-  { key: 'paid',      label: 'Paid 已收款',       icon: '💰', color: '#D85A30', bg: '#FFF3EF' },
+  { key: 'waiting',   label: 'Waiting 等待检查',     Icon: Clock,            color: '#6B7280', bg: '#F9FAFB' },
+  { key: 'repairing', label: 'Repairing 维修中',     Icon: Wrench,           color: '#2563EB', bg: '#EFF6FF' },
+  { key: 'parts',     label: 'Parts Pending 等零件',  Icon: Package,          color: '#D97706', bg: '#FFFBEB' },
+  { key: 'completed', label: 'Completed 已完成',     Icon: CheckCircle2,     color: '#16A34A', bg: '#F0FDF4' },
+  { key: 'paid',      label: 'Paid 已收款',          Icon: CircleDollarSign, color: '#D85A30', bg: '#FFF3EF' },
 ]
 
 const COL_MAP = Object.fromEntries(COLUMNS.map(c => [c.key, c]))
@@ -77,14 +78,14 @@ export default function Kanban() {
       <div style={{ padding:'14px 20px 10px', background:'var(--card)', borderBottom:'1px solid var(--border)', flexShrink:0 }}>
         <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', flexWrap:'wrap', gap:10 }}>
           <div>
-            <div style={{ fontSize:18, fontWeight:800 }}>📋 Work Board 今日工单看板</div>
+            <div style={{ fontSize:18, fontWeight:800, display:'flex', alignItems:'center', gap:8, fontFamily:"'Syne', sans-serif" }}><Columns3 size={18} /> Work Board 今日工单看板</div>
             <div style={{ fontSize:12, color:'var(--text3)', marginTop:3 }}>
               {new Date().toLocaleDateString('en-SG', { weekday:'long', year:'numeric', month:'long', day:'numeric' })}
               {' · '}<span style={{ color:'var(--orange)', fontWeight:600 }}>{totalToday} jobs</span>
               {' · '}Revenue: <span style={{ color:'var(--green)', fontWeight:600 }}>${totalRev.toFixed(2)}</span>
             </div>
           </div>
-          <button className="btn" onClick={load} style={{ fontSize:12 }}>🔄 Refresh</button>
+          <button className="btn" onClick={load} style={{ display:'flex', alignItems:'center', gap:5, fontSize:12 }}><RefreshCw size={12} /> Refresh</button>
         </div>
       </div>
 
@@ -107,7 +108,7 @@ export default function Kanban() {
                   transition: 'outline .1s',
                 }}>
                 <div className="kanban-col-header" style={{ color: col.color, borderBottom: `2px solid ${col.color}30` }}>
-                  <span>{col.icon} {col.label}</span>
+                  <span style={{ display:'inline-flex', alignItems:'center', gap:6 }}><col.Icon size={13} /> {col.label}</span>
                   <span className="kanban-col-count">{colCards.length}</span>
                 </div>
 
@@ -140,8 +141,8 @@ export default function Kanban() {
       <div style={{ padding:'8px 20px', background:'var(--card)', borderTop:'1px solid var(--border)', flexShrink:0, display:'flex', gap:16, alignItems:'center', flexWrap:'wrap' }}>
         <span style={{ fontSize:11, color:'var(--text3)', fontWeight:600 }}>Tip: Drag cards between columns or use the arrow buttons 拖动或点击箭头移动工单</span>
         {COLUMNS.map(c => (
-          <span key={c.key} style={{ fontSize:10, fontWeight:600, padding:'2px 8px', borderRadius:20, background:c.bg, color:c.color }}>
-            {c.icon} {grouped[c.key]?.length || 0}
+          <span key={c.key} style={{ display:'inline-flex', alignItems:'center', gap:4, fontSize:10, fontWeight:600, padding:'2px 8px', borderRadius:20, background:c.bg, color:c.color }}>
+            <c.Icon size={9} /> {grouped[c.key]?.length || 0}
           </span>
         ))}
       </div>
@@ -193,7 +194,7 @@ function KanbanCard({ card, col, columns, dragging, onDragStart, onDragEnd, onMo
 
       {/* Technician */}
       {card.technician && (
-        <div style={{ fontSize:11, color:'var(--text2)', marginBottom:6 }}>🔧 {card.technician}</div>
+        <div style={{ fontSize:11, color:'var(--text2)', marginBottom:6, display:'flex', alignItems:'center', gap:3 }}><Wrench size={9} />{card.technician}</div>
       )}
 
       {/* Services preview */}
@@ -224,20 +225,17 @@ function KanbanCard({ card, col, columns, dragging, onDragStart, onDragEnd, onMo
       {/* Move buttons */}
       <div style={{ display:'flex', gap:4, marginTop:8 }}>
         {prevCol && (
-          <button onClick={() => onMove(card.id, prevCol.key)} style={{
-            flex:1, padding:'4px', fontSize:10, fontWeight:600,
-            border:'1px solid var(--border)', borderRadius:6, background:'var(--bg)',
-            cursor:'pointer', color:'var(--text2)', transition:'.15s',
-          }}
-            onMouseEnter={e => e.target.style.background = prevCol.bg}
-            onMouseLeave={e => e.target.style.background = 'var(--bg)'}
+          <button onClick={() => onMove(card.id, prevCol.key)}
+            className="kanban-move-btn"
+            style={{ '--btn-hover-bg': prevCol.bg }}
           >← {prevCol.icon}</button>
         )}
         {nextCol && (
           <button onClick={() => onMove(card.id, nextCol.key)} style={{
             flex:1, padding:'4px', fontSize:10, fontWeight:600,
             border:`1px solid ${nextCol.color}40`, borderRadius:6, background:nextCol.bg,
-            cursor:'pointer', color:nextCol.color, transition:'.15s',
+            cursor:'pointer', color:nextCol.color,
+            transition:'filter .15s', fontFamily:'inherit',
           }}>{nextCol.icon} →</button>
         )}
       </div>

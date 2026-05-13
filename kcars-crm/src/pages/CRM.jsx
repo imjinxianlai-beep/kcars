@@ -1,5 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { supabase, getCustomers, getTotalCustomers, searchCustomers, getInvoices, deleteCustomer,
+import { motion } from 'framer-motion'
+import { Users, Plus, Pencil, Trash2, MessageCircle, Car, ClipboardList, Wrench, Phone, Calendar, FileText, Download, Printer, CheckCircle2, DollarSign, RotateCcw, Clock, AlertTriangle } from 'lucide-react'
+import { supabase, getCustomers, getTotalCustomers, searchCustomers, getCustomer, getInvoices, deleteCustomer,
   upsertCustomer, updateCustomerTags, createInvoice, updateInvoice, updateInvoiceStatus,
   deleteInvoice, generateInvoiceNo, getCatalog,
   getActivities, addActivity, deleteActivity,
@@ -11,20 +13,48 @@ import { printInvoice, downloadInvoice } from '../lib/pdf'
 const fmt = (n) => `$${parseFloat(n || 0).toFixed(2)}`
 const fmtSGD = (n) => `SGD $${parseFloat(n || 0).toLocaleString('en-SG', { minimumFractionDigits: 2 })}`
 
+const AVATAR_PALETTE = [
+  { bg:'#FEF0EB', fg:'#D85A30' },
+  { bg:'#DBEAFE', fg:'#2563EB' },
+  { bg:'#DCFCE7', fg:'#16A34A' },
+  { bg:'#FEE2E2', fg:'#DC2626' },
+  { bg:'#FEF3C7', fg:'#D97706' },
+  { bg:'#E0F2FE', fg:'#0284C7' },
+  { bg:'#F0FDF4', fg:'#15803D' },
+]
+const getAvatarPalette = (name = '') => AVATAR_PALETTE[(name.charCodeAt(0) || 0) % AVATAR_PALETTE.length]
+const getInitials = (name = '') => {
+  const parts = name.trim().split(/\s+/)
+  return parts.length >= 2 ? (parts[0][0] + parts[parts.length-1][0]).toUpperCase() : name.slice(0,2).toUpperCase()
+}
+
+function CustAvatar({ name = '', size = 32 }) {
+  const { bg, fg } = getAvatarPalette(name)
+  return (
+    <div style={{
+      width: size, height: size, borderRadius: Math.round(size * 0.3),
+      background: bg, color: fg,
+      display:'flex', alignItems:'center', justifyContent:'center',
+      fontSize: Math.round(size * 0.37), fontWeight: 700, flexShrink: 0,
+      letterSpacing: '-.5px',
+    }}>{getInitials(name)}</div>
+  )
+}
+
 const statusColors = { draft: 'tag-draft', confirmed: 'tag-confirmed', paid: 'tag-paid' }
 const statusLabels = { draft: 'Draft 草稿', confirmed: 'Confirmed 已确认', paid: 'Paid 已付款' }
 
 const PRESET_TAGS = [
-  { key: 'vip',      label: 'VIP',       emoji: '🌟', bg: '#FEF3C7', color: '#D97706' },
-  { key: 'regular',  label: 'Regular 常客', emoji: '🔄', bg: '#DBEAFE', color: '#2563EB' },
-  { key: 'new',      label: 'New 新客户',  emoji: '🆕', bg: '#DCFCE7', color: '#16A34A' },
-  { key: 'problem',  label: 'Problem ⚠️', emoji: '⚠️', bg: '#FEE2E2', color: '#DC2626' },
-  { key: 'sold_car', label: 'Sold Car 已卖车', emoji: '🚗', bg: '#F3F4F6', color: '#6B7280' },
+  { key: 'vip',      label: 'VIP',             bg: '#FEF3C7', color: '#D97706' },
+  { key: 'regular',  label: 'Regular 常客',    bg: '#DBEAFE', color: '#2563EB' },
+  { key: 'new',      label: 'New 新客户',      bg: '#DCFCE7', color: '#16A34A' },
+  { key: 'problem',  label: 'Problem',         bg: '#FEE2E2', color: '#DC2626' },
+  { key: 'sold_car', label: 'Sold Car 已卖车', bg: '#F3F4F6', color: '#6B7280' },
 ]
 
 const tagMeta = Object.fromEntries(PRESET_TAGS.map(t => [t.key, t]))
 
-export default function CRM({ session }) {
+export default function CRM({ session, pendingCustomerId, onCustomerSelected }) {
   const [customers, setCustomers] = useState([])
   const [selected, setSelected] = useState(null)
   const [invoices, setInvoices] = useState([])
@@ -92,6 +122,15 @@ export default function CRM({ session }) {
     await loadInvoices(c.id)
   }
 
+  // Auto-select customer when navigating from global search
+  useEffect(() => {
+    if (!pendingCustomerId) return
+    getCustomer(pendingCustomerId).then(({ data }) => {
+      if (data) selectCustomer(data)
+      onCustomerSelected?.()
+    })
+  }, [pendingCustomerId])
+
   const stats = {
     customers: customers.length,
     invoices: invoices.length,
@@ -132,11 +171,11 @@ export default function CRM({ session }) {
           <div className="sidebar-search">
             <input ref={searchRef} value={search}
               onChange={e => setSearch(e.target.value)}
-              placeholder="🔍  Name, plate, model..." />
+              placeholder="Search name, plate, model..." />
           </div>
           <div className="sidebar-actions">
             <button className="btn-add" onClick={() => setModal('customer')}>
-              ＋ Add Customer 新增客户
+              <Plus size={13} /> Add Customer 新增客户
             </button>
           </div>
 
@@ -165,21 +204,33 @@ export default function CRM({ session }) {
             {loading ? <div className="spinner" /> :
               customers.slice(0, 300)
                 .filter(c => !tagFilter || (c.tags || []).includes(tagFilter))
-                .map(c => (
-                  <div key={c.id} className={`cust-item ${selected?.id === c.id ? 'active' : ''}`}
+                .map((c, idx) => (
+                  <motion.div key={c.id}
+                    className={`cust-item ${selected?.id === c.id ? 'active' : ''}`}
+                    initial={{ y: 10, opacity: 0 }}
+                    animate={{ y: 0, opacity: 1 }}
+                    transition={{ duration: 0.18, delay: Math.min(idx * 0.03, 0.3) }}
                     onClick={() => selectCustomer(c)}>
-                    <div className="cust-name">{c.name}</div>
-                    <div className="cust-plate">{c.car_plate}</div>
-                    <div className="cust-sub">{c.car_make} {c.car_model}</div>
-                    {(c.tags || []).length > 0 && (
-                      <div style={{ display:'flex', gap:3, flexWrap:'wrap', marginTop:3 }}>
-                        {(c.tags || []).map(tag => {
-                          const m = tagMeta[tag]; if (!m) return null
-                          return <span key={tag} style={{ fontSize:9, padding:'1px 5px', borderRadius:20, background:m.bg, color:m.color, fontWeight:700 }}>{m.emoji} {m.label}</span>
-                        })}
+                    <div style={{ display:'flex', gap:10, alignItems:'flex-start' }}>
+                      <CustAvatar name={c.name} size={34} />
+                      <div style={{ flex:1, minWidth:0 }}>
+                        <div className="cust-name">{c.name}</div>
+                        <div className="cust-plate">{c.car_plate}</div>
+                        <div className="cust-sub">{c.car_make} {c.car_model}</div>
+                        {(c.tags || []).length > 0 && (
+                          <div style={{ display:'flex', gap:3, flexWrap:'wrap', marginTop:3 }}>
+                            {(c.tags || []).map(tag => {
+                              const m = tagMeta[tag]; if (!m) return null
+                              return <span key={tag} style={{ display:'inline-flex', alignItems:'center', gap:2, fontSize:9, padding:'1px 6px', borderRadius:20, background:m.bg, color:m.color, fontWeight:700 }}>
+                                <span style={{ width:4, height:4, borderRadius:'50%', background:m.color, display:'inline-block', flexShrink:0 }} />
+                                {m.label}
+                              </span>
+                            })}
+                          </div>
+                        )}
                       </div>
-                    )}
-                  </div>
+                    </div>
+                  </motion.div>
                 ))}
             {customers.length > 300 && (
               <div className="sidebar-count">Showing 300 of {customers.length} — search to narrow</div>
@@ -191,42 +242,48 @@ export default function CRM({ session }) {
         <div className={`detail-panel ${mobileView === 'detail' ? 'active' : ''}`}>
           {!selected ? (
             <div className="detail-empty">
-              <div className="icon">🚗</div>
+              <Car size={52} color="var(--text3)" />
               <div style={{ fontSize: 15, fontWeight: 600 }}>Select a customer</div>
               <div>Search by name, plate number, or model</div>
             </div>
           ) : (
-            <>
+            <motion.div key={selected.id}
+              initial={{ x: 20, opacity: 0 }}
+              animate={{ x: 0, opacity: 1 }}
+              transition={{ duration: 0.2, ease: 'easeOut' }}>
               <button className="mobile-back" onClick={() => { setMobileView('list'); setSelected(null) }}>
-                ← Back to list
+                › Back to list
               </button>
 
               {/* Customer Header */}
               <div className="card">
                 <div className="card-header">
-                  <div>
-                    <div className="customer-name">{selected.name}</div>
-                    <div className="customer-meta">
-                      {invoices.length} visits · {fmtSGD(stats.revenue)} total
-                      {selected.updated_at && ` · Updated ${new Date(selected.updated_at).toLocaleDateString()}`}
+                  <div style={{ display:'flex', alignItems:'center', gap:14 }}>
+                    <CustAvatar name={selected.name} size={48} />
+                    <div>
+                      <div className="customer-name">{selected.name}</div>
+                      <div className="customer-meta">
+                        {invoices.length} visits · {fmtSGD(stats.revenue)} total
+                        {selected.updated_at && ` · Updated ${new Date(selected.updated_at).toLocaleDateString()}`}
+                      </div>
                     </div>
                   </div>
                   <div className="actions">
                     {selected.phone && (
                       <a href={`https://wa.me/65${selected.phone.replace(/\D/g, '')}`}
-                        target="_blank" rel="noreferrer">
-                        <button className="btn btn-wa">📱 WhatsApp</button>
+                        target="_blank" rel="noreferrer" style={{ textDecoration: 'none' }}>
+                        <button className="btn btn-wa" style={{ display:'flex', alignItems:'center', gap:5 }}><MessageCircle size={13} /> WhatsApp</button>
                       </a>
                     )}
-                    <button className="btn btn-primary" onClick={() => setModal('invoice')}>
-                      ＋ New Invoice 开单
+                    <button className="btn btn-primary" style={{ display:'flex', alignItems:'center', gap:5 }} onClick={() => setModal('invoice')}>
+                      <Plus size={13} /> New Invoice
                     </button>
-                    <button className="btn" onClick={() => setModal('editCustomer')}>✏️ Edit</button>
-                    <button className="btn btn-danger" onClick={async () => {
+                    <button className="btn" style={{ display:'flex', alignItems:'center', gap:5 }} onClick={() => setModal('editCustomer')}><Pencil size={13} /> Edit</button>
+                    <button className="btn btn-danger" style={{ display:'flex', alignItems:'center', gap:4 }} onClick={async () => {
                       if (!confirm('Delete this customer and ALL their invoices?')) return
                       await deleteCustomer(selected.id)
                       setSelected(null); setInvoices([]); loadCustomers()
-                    }}>🗑</button>
+                    }}><Trash2 size={13} /></button>
                   </div>
                 </div>
                 <div className="info-grid">
@@ -264,7 +321,7 @@ export default function CRM({ session }) {
                         color: has ? t.color : 'var(--text3)',
                         fontSize:11, fontWeight:600, cursor:'pointer', transition:'.15s',
                       }}>
-                        {t.emoji} {t.label}
+                        {t.label}
                       </button>
                     )
                   })}
@@ -272,14 +329,14 @@ export default function CRM({ session }) {
 
                 {selected.notes && (
                   <div style={{ fontSize: 12, color: 'var(--text2)', padding: '4px 0', marginTop:4 }}>
-                    📝 {selected.notes}
+                    {selected.notes}
                   </div>
                 )}
               </div>
 
               {/* Invoice List */}
               <div className="section-title">
-                <span>📋 INVOICE HISTORY 发票记录</span>
+                <span style={{ display:'flex', alignItems:'center', gap:5 }}><ClipboardList size={11} /> INVOICE HISTORY 发票记录</span>
                 <span style={{ fontWeight: 400, color: 'var(--text3)' }}>{invoices.length} records</span>
               </div>
 
@@ -305,7 +362,7 @@ export default function CRM({ session }) {
 
               {/* Notes & Tasks */}
               <NotesAndTasks customerId={selected.id} />
-            </>
+            </motion.div>
           )}
         </div>
       </div>
@@ -363,7 +420,9 @@ function InvoiceCard({ inv, open, onToggle, onEdit, onDelete, onStatusChange, cu
             <div className="inv-no">{inv.invoice_no}</div>
             <span className={`tag ${statusColors[inv.status]}`}>{statusLabels[inv.status]}</span>
           </div>
-          <div className="inv-date">{inv.date} {inv.technician && `· 🔧 ${inv.technician}`}</div>
+          <div className="inv-date" style={{ display:'flex', alignItems:'center', gap:4 }}>
+            {inv.date}{inv.technician && <><span style={{ color:'var(--border)' }}>·</span><Wrench size={10} style={{ color:'var(--text3)' }} />{inv.technician}</>}
+          </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <div className="inv-total">{fmt(inv.total)}</div>
@@ -400,28 +459,28 @@ function InvoiceCard({ inv, open, onToggle, onEdit, onDelete, onStatusChange, cu
 
           {/* Actions */}
           <div style={{ display: 'flex', gap: 6, padding: '10px 14px', background: 'var(--bg2)', flexWrap: 'wrap' }}>
-            <button className="btn" style={{ fontSize: 11 }} onClick={onEdit}>✏️ Edit 编辑</button>
-            <button className="btn btn-green" style={{ fontSize: 11 }}
+            <button className="btn" style={{ fontSize:11, display:'flex', alignItems:'center', gap:4 }} onClick={onEdit}><Pencil size={11} /> Edit</button>
+            <button className="btn btn-green" style={{ fontSize:11, display:'flex', alignItems:'center', gap:4 }}
               onClick={() => downloadInvoice(inv, customer, inv.invoice_items || [], inv.invoice_type)}>
-              ⬇️ PDF
+              <Download size={11} /> PDF
             </button>
-            <button className="btn btn-primary" style={{ fontSize: 11 }}
+            <button className="btn btn-primary" style={{ fontSize:11, display:'flex', alignItems:'center', gap:4 }}
               onClick={() => printInvoice(inv, customer, inv.invoice_items || [], inv.invoice_type)}>
-              🖨️ Print 打印
+              <Printer size={11} /> Print
             </button>
             {inv.status === 'draft' && (
-              <button className="btn btn-blue" style={{ fontSize: 11 }}
-                onClick={() => onStatusChange('confirmed')}>✓ Confirm 确认</button>
+              <button className="btn btn-blue" style={{ fontSize:11, display:'flex', alignItems:'center', gap:4 }}
+                onClick={() => onStatusChange('confirmed')}><CheckCircle2 size={11} /> Confirm</button>
             )}
             {inv.status === 'confirmed' && (
-              <button className="btn btn-green" style={{ fontSize: 11 }}
-                onClick={() => onStatusChange('paid')}>💰 Mark Paid 已付款</button>
+              <button className="btn btn-green" style={{ fontSize:11, display:'flex', alignItems:'center', gap:4 }}
+                onClick={() => onStatusChange('paid')}><DollarSign size={11} /> Mark Paid</button>
             )}
             {inv.status === 'paid' && (
-              <button className="btn" style={{ fontSize: 11 }}
-                onClick={() => onStatusChange('confirmed')}>↩ Unpay</button>
+              <button className="btn" style={{ fontSize:11, display:'flex', alignItems:'center', gap:4 }}
+                onClick={() => onStatusChange('confirmed')}><RotateCcw size={11} /> Unpay</button>
             )}
-            <button className="btn btn-danger" style={{ fontSize: 11, marginLeft: 'auto' }} onClick={onDelete}>🗑</button>
+            <button className="btn btn-danger" style={{ fontSize:11, marginLeft:'auto', display:'flex', alignItems:'center', gap:4 }} onClick={onDelete}><Trash2 size={11} /></button>
           </div>
         </div>
       )}
@@ -459,7 +518,7 @@ function CustomerModal({ customer, onClose, onSave }) {
     <div className="modal-bg show" onClick={e => e.target === e.currentTarget && onClose()}>
       <div className="modal">
         <div className="modal-head">
-          <h3>{customer ? '✏️ Edit Customer 编辑客户' : '👤 Add Customer 新增客户'}</h3>
+          <h3 style={{ display:'flex', alignItems:'center', gap:7 }}>{customer ? <><Pencil size={14} /> Edit Customer 编辑客户</> : <><Users size={14} /> Add Customer 新增客户</>}</h3>
           <button className="modal-close" onClick={onClose}>×</button>
         </div>
         <div className="modal-body">
@@ -562,7 +621,7 @@ function InvoiceModal({ customer, invoice, catalog, onClose, onSave }) {
 
   const cats = [...new Set(catalog.map(c => c.category))]
   const catItems = activeCat ? catalog.filter(c => c.category === activeCat) : []
-  const catIcon = (cat) => catalog.find(c => c.category === cat)?.category_icon || '🔧'
+  const catIcon = (cat) => catalog.find(c => c.category === cat)?.category_icon || null
 
   const subtotal = cart.reduce((a, i) => a + i.cost, 0)
   const total = Math.max(0, subtotal - parseFloat(discount || 0))
@@ -597,7 +656,7 @@ function InvoiceModal({ customer, invoice, catalog, onClose, onSave }) {
     <div className="modal-bg show" onClick={e => e.target === e.currentTarget && onClose()}>
       <div className="modal" style={{ maxWidth: 580 }}>
         <div className="modal-head">
-          <h3>{invoice ? `✏️ Edit ${invoice.invoice_no}` : '📋 New Invoice 新建发票'}</h3>
+          <h3 style={{ display:'flex', alignItems:'center', gap:7 }}>{invoice ? <><Pencil size={14} /> Edit {invoice.invoice_no}</> : <><FileText size={14} /> New Invoice 新建发票</>}</h3>
           <button className="modal-close" onClick={onClose}>×</button>
         </div>
         <div className="modal-body">
@@ -677,7 +736,7 @@ function InvoiceModal({ customer, invoice, catalog, onClose, onSave }) {
             {cats.map(cat => (
               <button key={cat} className={`cat-btn ${activeCat === cat ? 'active' : ''}`}
                 onClick={() => setActiveCat(activeCat === cat ? null : cat)}>
-                {catIcon(cat)} {cat}
+                {catIcon(cat) ? <>{catIcon(cat)} </> : <Wrench size={11} style={{marginRight:4}} />}{cat}
               </button>
             ))}
           </div>
@@ -749,10 +808,10 @@ function InvoiceModal({ customer, invoice, catalog, onClose, onSave }) {
 
 // ─── Activity Timeline ──────────────────────────────────────────────────────
 const ACTIVITY_TYPES = [
-  { key: 'repair',      icon: '🔧', label: 'Repair 维修记录',   color: 'var(--orange)' },
-  { key: 'whatsapp',    icon: '📱', label: 'WhatsApp 联系',     color: '#25D366' },
-  { key: 'note',        icon: '📝', label: 'Note 备注',          color: 'var(--blue)' },
-  { key: 'appointment', icon: '📅', label: 'Appointment 预约',  color: 'var(--green)' },
+  { key: 'repair',      Icon: Wrench,       label: 'Repair 维修记录',  color: 'var(--orange)' },
+  { key: 'whatsapp',    Icon: MessageCircle, label: 'WhatsApp 联系',    color: '#25D366' },
+  { key: 'note',        Icon: FileText,     label: 'Note 备注',         color: 'var(--blue)' },
+  { key: 'appointment', Icon: Calendar,     label: 'Appointment 预约', color: 'var(--green)' },
 ]
 
 function ActivityTimeline({ customerId, session }) {
@@ -792,7 +851,7 @@ function ActivityTimeline({ customerId, session }) {
   return (
     <div>
       <div className="section-title">
-        <span>⏱ ACTIVITY TIMELINE 活动记录</span>
+        <span style={{ display:'flex', alignItems:'center', gap:5 }}><Clock size={11} /> ACTIVITY TIMELINE 活动记录</span>
         <button className="btn" style={{ fontSize:11, padding:'3px 10px' }}
           onClick={() => setAddOpen(!addOpen)}>
           + Add 添加
@@ -809,7 +868,7 @@ function ActivityTimeline({ customerId, session }) {
                 color: type===t.key ? t.color : 'var(--text3)',
                 fontSize:11, fontWeight:600, cursor:'pointer',
               }}>
-                {t.icon} {t.label}
+                <t.Icon size={11} /> {t.label}
               </button>
             ))}
           </div>
@@ -839,11 +898,11 @@ function ActivityTimeline({ customerId, session }) {
             const t = typeInfo[act.type] || typeInfo.note
             return (
               <div key={act.id} className={`timeline-item ${act.type}`}>
-                <div className="timeline-dot">{t.icon}</div>
+                <div className="timeline-dot"><t.Icon size={8} /></div>
                 <div className="timeline-content">
                   <div style={{ fontSize:13, lineHeight:1.5 }}>{act.content}</div>
                   <div className="timeline-meta" style={{ display:'flex', justifyContent:'space-between', alignItems:'center' }}>
-                    <span>{t.icon} {t.label} · {fmtDate(act.created_at)}</span>
+                    <span style={{ display:'flex', alignItems:'center', gap:4 }}><t.Icon size={10} /> {t.label} · {fmtDate(act.created_at)}</span>
                     <div style={{ display:'flex', gap:8, alignItems:'center' }}>
                       {act.created_by && <span style={{ fontSize:10, color:'var(--text3)' }}>by {act.created_by}</span>}
                       <button onClick={() => remove(act.id)} style={{ background:'none', border:'none', color:'var(--text3)', cursor:'pointer', fontSize:14, lineHeight:1, padding:0 }}>×</button>
@@ -1016,13 +1075,13 @@ function NotesAndTasks({ customerId }) {
                 <div style={{ display:'flex', gap:10, alignItems:'flex-start' }}>
                   <div style={{ flex:1 }}>
                     <div style={{ fontSize:13, lineHeight:1.6, color:'var(--text)' }}>{note.content}</div>
-                    <div style={{ fontSize:11, color:'var(--text3)', marginTop:4 }}>
-                      📝 {new Date(note.created_at).toLocaleString('en-SG', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' })}
+                    <div style={{ fontSize:11, color:'var(--text3)', marginTop:4, display:'flex', alignItems:'center', gap:3 }}>
+                      <Clock size={10} />{new Date(note.created_at).toLocaleString('en-SG', { day:'2-digit', month:'short', year:'numeric', hour:'2-digit', minute:'2-digit' })}
                     </div>
                   </div>
                   <div style={{ display:'flex', gap:4, flexShrink:0 }}>
-                    <button onClick={() => { setEditNoteId(note.id); setEditNoteVal(note.content) }} style={{ background:'none', border:'none', cursor:'pointer', color:'var(--text3)', fontSize:13, padding:'2px 4px' }}>✏️</button>
-                    <button onClick={() => removeNote(note.id)} style={{ background:'none', border:'none', cursor:'pointer', color:'var(--text3)', fontSize:13, padding:'2px 4px' }}>🗑</button>
+                    <button onClick={() => { setEditNoteId(note.id); setEditNoteVal(note.content) }} style={{ background:'none', border:'none', cursor:'pointer', color:'var(--text3)', padding:'2px 4px', display:'flex', alignItems:'center' }}><Pencil size={12} /></button>
+                    <button onClick={() => removeNote(note.id)} style={{ background:'none', border:'none', cursor:'pointer', color:'var(--text3)', padding:'2px 4px', display:'flex', alignItems:'center' }}><Trash2 size={12} /></button>
                   </div>
                 </div>
               )}
@@ -1050,7 +1109,7 @@ function TaskRow({ task, onToggle, onDelete, overdue, fmtDate, done }) {
         </div>
         {task.due_date && (
           <div style={{ fontSize:11, marginTop:2, color: overdue ? 'var(--red)' : 'var(--text3)', fontWeight: overdue ? 700 : 400 }}>
-            {overdue ? '⚠️ Overdue:' : '📅'} {fmtDate(task.due_date)}
+            <span style={{ display:'inline-flex', alignItems:'center', gap:3 }}>{overdue ? <AlertTriangle size={10} /> : <Calendar size={10} />}{overdue ? ' Overdue:' : ''} {fmtDate(task.due_date)}</span>
           </div>
         )}
       </div>

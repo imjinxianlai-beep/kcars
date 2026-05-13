@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
+import { Calendar, Car, Wrench, Phone, RefreshCw, ChevronDown, Search } from 'lucide-react'
 
 export default function Reports() {
   const [tab, setTab] = useState('date') // date | vehicles
@@ -10,18 +11,19 @@ export default function Reports() {
       {/* Tab switcher */}
       <div style={{ background:'var(--card)', borderBottom:'1px solid var(--border)', padding:'0 20px', display:'flex', gap:4 }}>
         {[
-          { key:'date',     label:'📅 Date Query 日期查询' },
-          { key:'vehicles', label:'🚗 Vehicle Analysis 车型分析' },
+          { key:'date',     label:'Date Query 日期查询',       Icon: Calendar },
+          { key:'vehicles', label:'Vehicle Analysis 车型分析',  Icon: Car },
         ].map(t => (
           <button key={t.key} onClick={() => setTab(t.key)}
             style={{
+              display:'flex', alignItems:'center', gap:6,
               padding:'12px 16px', border:'none', background:'none',
-              fontSize:13, fontWeight:600, cursor:'pointer',
+              fontSize:13, fontWeight:600, cursor:'pointer', fontFamily:'inherit',
               borderBottom: tab===t.key ? '2px solid var(--orange)' : '2px solid transparent',
               color: tab===t.key ? 'var(--orange)' : 'var(--text2)',
-              transition:'.15s'
+              transition:'color .15s, border-color .15s'
             }}>
-            {t.label}
+            <t.Icon size={13} /> {t.label}
           </button>
         ))}
       </div>
@@ -34,7 +36,7 @@ export default function Reports() {
 
 // ── DATE QUERY ──────────────────────────────────────────────────────────
 function DateQuery() {
-  const today = new Date().toISOString().split('T')[0]
+  const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Singapore' })
   const [mode, setMode] = useState('day') // day | range | month
   const [date, setDate] = useState(today)
   const [dateFrom, setDateFrom] = useState(today)
@@ -104,7 +106,7 @@ function DateQuery() {
 
   return (
     <div style={{ padding:'16px 20px', maxWidth:900, margin:'0 auto' }}>
-      <div style={{ fontSize:18, fontWeight:700, marginBottom:16 }}>📅 Date Query 日期查询</div>
+      <div style={{ fontSize:18, fontWeight:700, marginBottom:16, display:'flex', alignItems:'center', gap:8, fontFamily:"'Syne',sans-serif" }}><Calendar size={18} /> Date Query 日期查询</div>
 
       {/* Quick selects */}
       <div style={{ display:'flex', gap:8, marginBottom:14, flexWrap:'wrap' }}>
@@ -140,7 +142,7 @@ function DateQuery() {
         <div style={{ display:'flex', gap:10, alignItems:'center', flexWrap:'wrap' }}>
           {mode === 'day' && (
             <input type="date" value={date} onChange={e => setDate(e.target.value)}
-              className="form-row" style={{ padding:'8px 12px', border:'1px solid var(--border)', borderRadius:8, fontSize:14, outline:'none' }} />
+              style={{ padding:'8px 12px', border:'1px solid var(--border)', borderRadius:8, fontSize:14, outline:'none' }} />
           )}
           {mode === 'range' && (
             <>
@@ -157,7 +159,7 @@ function DateQuery() {
           )}
           <button className="btn btn-primary" onClick={search} disabled={loading}
             style={{ fontSize:13 }}>
-            {loading ? 'Searching...' : '🔍 Search 查询'}
+            {loading ? 'Searching...' : 'Search 查询'}
           </button>
         </div>
       </div>
@@ -216,11 +218,11 @@ function InvoiceRow({ inv }) {
             <span style={{ fontWeight:700, fontSize:14 }}>{c.name || '—'}</span>
             <span style={{ fontFamily:'monospace', fontSize:12, color:'var(--orange)', fontWeight:700 }}>{c.car_plate}</span>
             <span style={{ fontSize:11, color:'var(--text3)' }}>{c.car_make} {c.car_model}</span>
-            {c.phone && <span style={{ fontSize:11, color:'#25D366', fontWeight:600 }}>📱 {c.phone}</span>}
+            {c.phone && <span style={{ display:'inline-flex', alignItems:'center', gap:3, fontSize:11, color:'#25D366', fontWeight:600 }}><Phone size={10} /> {c.phone}</span>}
           </div>
           <div style={{ fontSize:11, color:'var(--text3)', marginTop:3 }}>
             {inv.invoice_no} · {inv.date}
-            {inv.technician && <span style={{ color:'var(--text2)', marginLeft:6 }}>🔧 {inv.technician}</span>}
+            {inv.technician && <span style={{ display:'inline-flex', alignItems:'center', gap:3, color:'var(--text2)', marginLeft:6 }}><Wrench size={10} /> {inv.technician}</span>}
           </div>
         </div>
         <div style={{ display:'flex', alignItems:'center', gap:10 }}>
@@ -234,7 +236,7 @@ function InvoiceRow({ inv }) {
           <span style={{ fontSize:16, fontWeight:700, color:'var(--orange)' }}>
             ${parseFloat(inv.total||0).toFixed(2)}
           </span>
-          <span style={{ fontSize:10, color:'var(--text3)', transition:'.2s', transform: open?'rotate(180deg)':'none' }}>▼</span>
+          <ChevronDown size={14} style={{ color:'var(--text3)', transition:'transform .2s', transform: open?'rotate(180deg)':'none' }} />
         </div>
       </div>
 
@@ -252,7 +254,7 @@ function InvoiceRow({ inv }) {
               </div>
             ))
           }
-          <div style={{ display:'flex', justifyContent:'flex-end', padding:'8px 16px', background:'#111', color:'#fff', fontSize:13, fontWeight:700 }}>
+          <div style={{ display:'flex', justifyContent:'flex-end', padding:'8px 16px', background:'var(--bg-dark)', color:'#fff', fontSize:13, fontWeight:700 }}>
             <span>TOTAL: <span style={{ color:'var(--orange)' }}>${parseFloat(inv.total||0).toFixed(2)}</span></span>
           </div>
         </div>
@@ -341,8 +343,8 @@ function VehicleAnalysis() {
         style={{ marginBottom:16, fontSize:12 }}>
         ← Back to Vehicle Analysis
       </button>
-      <div style={{ fontSize:18, fontWeight:700, marginBottom:4 }}>
-        🚗 {drilldown.make} {drilldown.model}
+      <div style={{ fontSize:18, fontWeight:700, marginBottom:4, display:'flex', alignItems:'center', gap:8 }}>
+        <Car size={18} />{drilldown.make} {drilldown.model}
       </div>
       <div style={{ fontSize:12, color:'var(--text3)', marginBottom:16 }}>
         {drillData ? `${drillData.length} customers · Sorted by most visits` : 'Loading...'}
@@ -380,7 +382,7 @@ function VehicleAnalysis() {
   // ── Main view ──
   return (
     <div style={{ padding:'16px 20px', maxWidth:900, margin:'0 auto' }}>
-      <div style={{ fontSize:18, fontWeight:700, marginBottom:4 }}>🚗 Vehicle Analysis 车型分析</div>
+      <div style={{ fontSize:18, fontWeight:700, marginBottom:4, display:'flex', alignItems:'center', gap:8 }}><Car size={18} />Vehicle Analysis 车型分析</div>
       <div style={{ fontSize:12, color:'var(--text3)', marginBottom:16 }}>
         {totalCustomers.toLocaleString()} customers · {data?.length || 0} brands
         <span style={{ marginLeft:8, color:'var(--orange)' }}>· Click any model to see all customers</span>
@@ -388,7 +390,7 @@ function VehicleAnalysis() {
 
       <div style={{ marginBottom:14 }}>
         <input value={search} onChange={e => setSearch(e.target.value)}
-          placeholder="🔍 Search brand or model... e.g. Toyota, Estima"
+          placeholder="Search brand or model... e.g. Toyota, Estima"
           style={{ width:'100%', padding:'9px 14px', border:'1px solid var(--border)', borderRadius:8, fontSize:13, outline:'none', background:'var(--card)' }} />
       </div>
 
@@ -405,7 +407,7 @@ function VehicleAnalysis() {
                   transition:'.15s'
                 }}>
                 <div style={{ display:'flex', alignItems:'center', gap:12 }}>
-                  <span style={{ fontSize:16 }}>🚗</span>
+                  <Car size={16} />
                   <div>
                     <div style={{ fontWeight:700, fontSize:14 }}>{make}</div>
                     <div style={{ fontSize:11, color:'var(--text3)' }}>{models.length} models · {total} customers</div>
@@ -463,7 +465,8 @@ function DrillCustomer({ c, rank }) {
   const [invOpen, setInvOpen] = useState({})
   const [invItems, setInvItems] = useState({})
   const invoices = (c.invoices || []).sort((a,b) => b.date.localeCompare(a.date))
-  const medal = rank === 1 ? '🥇' : rank === 2 ? '🥈' : rank === 3 ? '🥉' : `#${rank}`
+  const rankBg = rank===1?'#FEF3C7':rank===2?'#F3F4F6':rank===3?'#FFF3EF':'var(--bg2)'
+  const rankColor = rank===1?'#D97706':rank===2?'#6B7280':rank===3?'#D85A30':'var(--text3)'
 
   const toggleInv = async (inv) => {
     const isOpen = invOpen[inv.id]
@@ -484,14 +487,14 @@ function DrillCustomer({ c, rank }) {
       {/* Customer header */}
       <div onClick={() => setOpen(!open)}
         style={{ padding:'12px 16px', cursor:'pointer', display:'flex', alignItems:'center', gap:12 }}>
-        <div style={{ fontSize:rank<=3?20:14, fontWeight:700, minWidth:36, textAlign:'center', color:'var(--text3)' }}>
-          {medal}
+        <div style={{ width:32, height:32, borderRadius:'50%', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0, background:rankBg, color:rankColor, fontWeight:700, fontSize:13 }}>
+          {rank}
         </div>
         <div style={{ flex:1 }}>
           <div style={{ display:'flex', alignItems:'center', gap:8, flexWrap:'wrap' }}>
             <span style={{ fontWeight:700, fontSize:14 }}>{c.name}</span>
             <span style={{ fontFamily:'monospace', fontSize:12, color:'var(--orange)', fontWeight:700 }}>{c.car_plate}</span>
-            {c.phone && <span style={{ fontSize:11, color:'#25D366' }}>📱 {c.phone}</span>}
+            {c.phone && <span style={{ fontSize:11, color:'var(--text3)', display:'inline-flex', alignItems:'center', gap:3 }}><Phone size={10} />{c.phone}</span>}
           </div>
           <div style={{ fontSize:11, color:'var(--text3)', marginTop:2 }}>
             Last visit: {c.lastVisit || '—'} · Total spent: ${c.totalSpend.toLocaleString('en-SG',{minimumFractionDigits:2})}
@@ -517,7 +520,7 @@ function DrillCustomer({ c, rank }) {
                 <div>
                   <div style={{ fontWeight:600, fontSize:13 }}>{inv.invoice_no}</div>
                   <div style={{ fontSize:11, color:'var(--text3)' }}>
-                    {inv.date}{inv.technician ? ` · 🔧 ${inv.technician}` : ''}
+                    {inv.date}{inv.technician ? <> · <Wrench size={9} style={{margin:'0 2px 0 4px'}} />{inv.technician}</> : ''}
                   </div>
                 </div>
                 <div style={{ display:'flex', alignItems:'center', gap:10 }}>

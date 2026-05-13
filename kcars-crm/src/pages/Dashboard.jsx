@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
+import { motion } from 'framer-motion'
+import { FileText, DollarSign, UserPlus, Users, AlertCircle, Calendar, TrendingUp, Trophy, Clock, Zap, RefreshCw, Bell, BarChart2, Columns3 } from 'lucide-react'
 
 const fmt  = (n) => `$${parseFloat(n || 0).toLocaleString('en-SG', { minimumFractionDigits: 2 })}`
 const fmtK = (n) => {
@@ -95,8 +97,8 @@ export default function Dashboard({ onNavigate }) {
 
         {/* Header */}
         <div style={{ marginBottom:20 }}>
-          <div style={{ fontSize:22, fontWeight:800, letterSpacing:'-.3px' }}>
-            🏠 Dashboard 总览
+          <div style={{ fontSize:22, fontWeight:800, letterSpacing:'-.3px', fontFamily:"'Syne', sans-serif" }}>
+            Dashboard 总览
           </div>
           <div style={{ fontSize:12, color:'var(--text3)', marginTop:4 }}>
             {new Date().toLocaleDateString('en-SG', { weekday:'long', year:'numeric', month:'long', day:'numeric' })}
@@ -104,32 +106,42 @@ export default function Dashboard({ onNavigate }) {
         </div>
 
         {/* ── Today KPIs ── */}
-        <div style={{ fontSize:11, fontWeight:700, textTransform:'uppercase', letterSpacing:'.5px', color:'var(--text3)', marginBottom:10 }}>
-          📅 Today 今日概览
+        <div style={{ display:'flex', alignItems:'center', gap:6, fontSize:11, fontWeight:700, textTransform:'uppercase', letterSpacing:'.5px', color:'var(--text3)', marginBottom:10 }}>
+          <Calendar size={11} /> Today 今日概览
         </div>
-        <div className="dash-grid" style={{ marginBottom:24 }}>
-          <KpiCard label="Today's Invoices 今日发票" value={today?.invoices ?? 0} icon="🧾" color="var(--blue)" />
-          <KpiCard label="Today's Revenue 今日营业额" value={fmt(today?.revenue)} icon="💰" color="var(--orange)" big />
-          <KpiCard label="New Customers 本月新客户" value={today?.newCustomers ?? 0} icon="👤" color="var(--green)" sub="This month" />
-          <KpiCard label="Unpaid Total 未收款" value={fmt(today?.unpaid)} icon="⚠️" color="var(--red)" big warn={today?.unpaid > 0} />
-        </div>
+        <motion.div className="dash-grid" style={{ marginBottom:24 }}
+          variants={{ hidden: {}, visible: { transition: { staggerChildren: 0.09 } } }}
+          initial="hidden"
+          animate="visible">
+          {[
+            { label: "Today's Invoices 今日发票",    value: today?.invoices ?? 0,     Icon: FileText,    color: '#2563EB' },
+            { label: "Today's Revenue 今日营业额",   value: fmt(today?.revenue),       Icon: DollarSign,  color: '#D85A30', big: true },
+            { label: 'New Customers 本月新客户',     value: today?.newCustomers ?? 0, Icon: UserPlus,    color: '#16A34A', sub: 'This month' },
+            { label: 'Unpaid Total 未收款',          value: fmt(today?.unpaid),        Icon: AlertCircle, color: '#DC2626', big: true, warn: today?.unpaid > 0 },
+          ].map((props, i) => (
+            <motion.div key={i}
+              variants={{ hidden: { y: 14, opacity: 0 }, visible: { y: 0, opacity: 1, transition: { duration: 0.25 } } }}>
+              <KpiCard {...props} />
+            </motion.div>
+          ))}
+        </motion.div>
 
         {/* ── Revenue Chart ── */}
         <div style={{ display:'grid', gridTemplateColumns:'1fr 300px', gap:16, marginBottom:20, alignItems:'start' }}>
           <div className="card" style={{ marginBottom:0 }}>
             <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:16 }}>
               <div>
-                <div style={{ fontWeight:700, fontSize:14 }}>📈 Monthly Revenue 本月营业额</div>
+                <div style={{ fontWeight:700, fontSize:14, display:'flex', alignItems:'center', gap:6 }}><TrendingUp size={14} /> Monthly Revenue 本月营业额</div>
                 <div style={{ fontSize:12, color:'var(--text3)' }}>{monthStr} · Total: <span style={{ color:'var(--orange)', fontWeight:700 }}>{fmt(monthRevenue)}</span></div>
               </div>
-              <button className="btn" style={{ fontSize:11 }} onClick={load}>🔄</button>
+              <button className="btn" style={{ display:'flex', alignItems:'center', gap:5, fontSize:11 }} onClick={load}><RefreshCw size={12} /></button>
             </div>
             <RevenueChart data={chart} />
           </div>
 
           {/* Technician Rankings */}
           <div className="card" style={{ marginBottom:0 }}>
-            <div style={{ fontWeight:700, fontSize:14, marginBottom:14 }}>🏆 Technician Rankings 技师排行</div>
+            <div style={{ fontWeight:700, fontSize:14, marginBottom:14, display:'flex', alignItems:'center', gap:6 }}><Trophy size={14} /> Technician Rankings 技师排行</div>
             {techs.length === 0 ? (
               <div style={{ color:'var(--text3)', fontSize:12, textAlign:'center', padding:'20px 0' }}>No data this month</div>
             ) : techs.map((t, i) => (
@@ -142,7 +154,7 @@ export default function Dashboard({ onNavigate }) {
         <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:16 }}>
           <div className="card" style={{ marginBottom:0 }}>
             <div style={{ display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom:14 }}>
-              <div style={{ fontWeight:700, fontSize:14 }}>🕐 Recent Invoices 最近发票</div>
+              <div style={{ fontWeight:700, fontSize:14, display:'flex', alignItems:'center', gap:6 }}><Clock size={14} /> Recent Invoices 最近发票</div>
               <button className="btn btn-primary" style={{ fontSize:11 }}
                 onClick={() => onNavigate?.('crm')}>
                 View All →
@@ -172,13 +184,13 @@ export default function Dashboard({ onNavigate }) {
 
           {/* Quick Actions */}
           <div className="card" style={{ marginBottom:0 }}>
-            <div style={{ fontWeight:700, fontSize:14, marginBottom:14 }}>⚡ Quick Actions 快捷操作</div>
-            <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
-              <QuickAction icon="👤" label="New Customer 新建客户" sub="Add a customer and vehicle 新增客户和车辆" color="var(--blue)" onClick={() => onNavigate?.('crm')} />
-              <QuickAction icon="🧾" label="Today's Invoices 今日工单" sub="View all invoices from today" color="var(--orange)" onClick={() => onNavigate?.('reports')} />
-              <QuickAction icon="🔔" label="Service Reminders 保养提醒" sub="Check overdue & upcoming services" color="var(--green)" onClick={() => onNavigate?.('reminders')} />
-              <QuickAction icon="📊" label="Reports 报表分析" sub="Revenue, vehicles, date queries" color="var(--text2)" onClick={() => onNavigate?.('reports')} />
-              <QuickAction icon="📋" label="Work Board 今日工单看板" sub="View & manage active jobs" color="#8B5CF6" onClick={() => onNavigate?.('kanban')} />
+            <div style={{ fontWeight:700, fontSize:14, marginBottom:14, display:'flex', alignItems:'center', gap:6 }}><Zap size={14} /> Quick Actions 快捷操作</div>
+            <div style={{ display:'flex', flexDirection:'column', gap:8 }}>
+              <QuickAction Icon={Users} label="New Customer 新建客户" sub="Add a customer and vehicle" color="#2563EB" onClick={() => onNavigate?.('crm')} />
+              <QuickAction Icon={FileText} label="Today's Invoices 今日工单" sub="View all invoices from today" color="#D85A30" onClick={() => onNavigate?.('reports')} />
+              <QuickAction Icon={Bell} label="Service Reminders 保养提醒" sub="Check overdue & upcoming services" color="#16A34A" onClick={() => onNavigate?.('reminders')} />
+              <QuickAction Icon={BarChart2} label="Reports 报表分析" sub="Revenue, vehicles, date queries" color="#6B7280" onClick={() => onNavigate?.('reports')} />
+              <QuickAction Icon={Columns3} label="Work Board 今日工单看板" sub="View & manage active jobs" color="#D85A30" onClick={() => onNavigate?.('kanban')} />
             </div>
           </div>
         </div>
@@ -189,12 +201,18 @@ export default function Dashboard({ onNavigate }) {
 }
 
 // ── KPI Card ─────────────────────────────────────────────────────────────────
-function KpiCard({ label, value, icon, color, big, warn, sub }) {
+function KpiCard({ label, value, Icon, color, big, warn, sub }) {
+  const c = warn ? '#DC2626' : color
   return (
-    <div className="dash-kpi" style={{ borderTop:`3px solid ${warn ? 'var(--red)' : color}` }}>
-      <div className="dash-kpi-label">{label}</div>
-      <div className="dash-kpi-val" style={{ color: warn ? 'var(--red)' : color, fontSize: big ? 24 : 28 }}>
-        {icon} {value}
+    <div className="dash-kpi" style={{ borderLeft: `3px solid ${c}` }}>
+      <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', marginBottom:10 }}>
+        <div className="dash-kpi-label">{label}</div>
+        <div style={{ width:32, height:32, borderRadius:9, background:`${c}18`, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+          <Icon size={15} color={c} />
+        </div>
+      </div>
+      <div className="dash-kpi-val" style={{ color: c, fontSize: big ? 22 : 26 }}>
+        {value}
       </div>
       {sub && <div className="dash-kpi-sub">{sub}</div>}
     </div>
@@ -267,12 +285,20 @@ function RevenueChart({ data }) {
 
 // ── Technician Row ────────────────────────────────────────────────────────────
 function TechRow({ tech, rank, maxRev }) {
-  const medals = ['🥇', '🥈', '🥉']
+  const rankColors = ['#F59E0B', '#94A3B8', '#92400E']
+  const rc = rank <= 3 ? rankColors[rank - 1] : undefined
   const pct = maxRev > 0 ? (tech.revenue / maxRev) * 100 : 0
   return (
     <div style={{ marginBottom:12 }}>
       <div style={{ display:'flex', alignItems:'center', gap:8, marginBottom:4 }}>
-        <span style={{ fontSize:16, width:22, textAlign:'center' }}>{medals[rank-1] || `#${rank}`}</span>
+        <div style={{
+          width:22, height:22, borderRadius:'50%', flexShrink:0,
+          background: rc ? `${rc}22` : 'var(--bg2)',
+          color: rc || 'var(--text3)',
+          display:'flex', alignItems:'center', justifyContent:'center',
+          fontSize:10, fontWeight:800,
+          border: rc ? `1.5px solid ${rc}60` : '1.5px solid var(--border)',
+        }}>{rank}</div>
         <div style={{ flex:1 }}>
           <div style={{ fontWeight:600, fontSize:13 }}>{tech.name}</div>
           <div style={{ fontSize:11, color:'var(--text3)' }}>{tech.jobs} jobs · {fmt(tech.revenue)}</div>
@@ -301,25 +327,17 @@ function StatusBadge({ status }) {
 }
 
 // ── Quick Action ──────────────────────────────────────────────────────────────
-function QuickAction({ icon, label, sub, color, onClick }) {
+function QuickAction({ Icon, label, sub, color, onClick }) {
   return (
-    <div onClick={onClick} style={{
-      display:'flex', alignItems:'center', gap:12, padding:'10px 14px',
-      border:'1px solid var(--border)', borderRadius:'var(--radius)',
-      cursor:'pointer', transition:'.15s',
-      background:'var(--bg)',
-    }}
-      onMouseEnter={e => { e.currentTarget.style.borderColor = color; e.currentTarget.style.background = 'var(--card)' }}
-      onMouseLeave={e => { e.currentTarget.style.borderColor = 'var(--border)'; e.currentTarget.style.background = 'var(--bg)' }}
-    >
-      <div style={{ width:36, height:36, borderRadius:10, background:`${color}18`, display:'flex', alignItems:'center', justifyContent:'center', fontSize:18, flexShrink:0 }}>
-        {icon}
+    <button onClick={onClick} className="quick-action" style={{ '--action-color': color }}>
+      <div style={{ width:34, height:34, borderRadius:10, background:`${color}18`, display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+        <Icon size={16} color={color} />
       </div>
-      <div>
+      <div style={{ flex:1, textAlign:'left' }}>
         <div style={{ fontWeight:600, fontSize:13 }}>{label}</div>
         <div style={{ fontSize:11, color:'var(--text3)' }}>{sub}</div>
       </div>
-      <span style={{ marginLeft:'auto', color:'var(--text3)', fontSize:12 }}>→</span>
-    </div>
+      <span style={{ color:'var(--text3)', fontSize:14 }}>›</span>
+    </button>
   )
 }

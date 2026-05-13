@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { supabase } from '../lib/supabase'
+import { AlertTriangle, Bell, MessageCircle, Calendar, Car, XCircle, CheckCircle2, RefreshCw, Phone } from 'lucide-react'
 
 const SERVICE_INTERVAL_DAYS = 180
 const REMIND_BEFORE_DAYS    = 7
@@ -69,13 +70,13 @@ export default function Reminders() {
   const recent_list    = allList.filter(c => isRecent(c))
 
   const TABS = [
-    { key:'overdue',   icon:'⚠️', label:'Overdue 已过期',    count: overdue_list.length,   color:'#e74c3c' },
-    { key:'upcoming',  icon:'🔔', label:'Due Soon 即将到期', count: upcoming_list.length,  color:'var(--orange)' },
-    { key:'messaged',  icon:'📱', label:'Msg Sent 已发信',   count: messaged_list.length,  color:'#185fa5' },
-    { key:'appointed', icon:'📅', label:'Appointed 已预约',  count: appointed_list.length, color:'#1a7f37' },
-    { key:'sold',      icon:'🚗', label:'Car Sold 已卖车',   count: sold_list.length,      color:'#D85A30' },
-    { key:'skip',      icon:'❌', label:'Skip 无需跟进',      count: skip_list.length,      color:'#888' },
-    { key:'recent',    icon:'✅', label:'Serviced 已保养',   count: recent_list.length,    color:'#27ae60' },
+    { key:'overdue',   Icon: AlertTriangle, label:'Overdue 已过期',    count: overdue_list.length,   color:'#e74c3c' },
+    { key:'upcoming',  Icon: Bell,          label:'Due Soon 即将到期', count: upcoming_list.length,  color:'#D85A30' },
+    { key:'messaged',  Icon: MessageCircle, label:'Msg Sent 已发信',   count: messaged_list.length,  color:'#185fa5' },
+    { key:'appointed', Icon: Calendar,      label:'Appointed 已预约',  count: appointed_list.length, color:'#1a7f37' },
+    { key:'sold',      Icon: Car,           label:'Car Sold 已卖车',   count: sold_list.length,      color:'#D85A30' },
+    { key:'skip',      Icon: XCircle,       label:'Skip 无需跟进',      count: skip_list.length,      color:'#888' },
+    { key:'recent',    Icon: CheckCircle2,  label:'Serviced 已保养',   count: recent_list.length,    color:'#27ae60' },
   ]
 
   const currentList =
@@ -127,26 +128,29 @@ export default function Reminders() {
       {/* Header */}
       <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:16}}>
         <div>
-          <div style={{fontSize:20,fontWeight:700}}>🔔 Service Reminders 保养提醒</div>
+          <div style={{fontSize:20,fontWeight:700,display:'flex',alignItems:'center',gap:8,fontFamily:"'Syne',sans-serif"}}><Bell size={20} /> Service Reminders 保养提醒</div>
           <div style={{fontSize:12,color:'var(--text3)',marginTop:3}}>Cycle: 6 months · Remind: 1 week before</div>
         </div>
-        <button className="btn" onClick={loadReminders} style={{fontSize:12}}>🔄 Refresh</button>
+        <button className="btn" onClick={loadReminders} style={{display:'flex',alignItems:'center',gap:5,fontSize:12}}><RefreshCw size={12} /> Refresh</button>
       </div>
 
       {/* Tabs */}
       <div style={{display:'flex',flexWrap:'wrap',gap:8,marginBottom:16}}>
         {TABS.map(t => (
-          <div key={t.key} onClick={() => {setTab(t.key);setSelected(new Set())}}
+          <button key={t.key} onClick={() => {setTab(t.key);setSelected(new Set())}}
             style={{
-              background: tab===t.key ? t.color : '#fff',
-              color: tab===t.key ? '#fff' : '#111',
-              border: `2px solid ${t.color}`, borderRadius:10,
-              padding:'8px 12px', cursor:'pointer', transition:'.15s',
-              minWidth:110, flex:'1 1 110px'
+              background: tab===t.key ? t.color : 'var(--card)',
+              color: tab===t.key ? '#fff' : 'var(--text)',
+              border: `1.5px solid ${tab===t.key ? t.color : 'var(--border)'}`, borderRadius:10,
+              padding:'8px 12px', cursor:'pointer', transition:'background .15s, border-color .15s',
+              minWidth:110, flex:'1 1 110px', fontFamily:'inherit',
             }}>
-            <div style={{fontSize:18,fontWeight:700}}>{t.icon} {t.count}</div>
-            <div style={{fontSize:10,marginTop:2,opacity:.85,lineHeight:1.3}}>{t.label}</div>
-          </div>
+            <div style={{display:'flex',alignItems:'center',gap:5,marginBottom:2}}>
+              <t.Icon size={13} />
+              <span style={{fontSize:18,fontWeight:700}}>{t.count}</span>
+            </div>
+            <div style={{fontSize:10,opacity:.85,lineHeight:1.3,textAlign:'left'}}>{t.label}</div>
+          </button>
         ))}
       </div>
 
@@ -157,8 +161,8 @@ export default function Reminders() {
             style={{width:16,height:16,accentColor:'var(--orange)',cursor:'pointer'}} />
           <span style={{fontSize:13,flex:1}}>{selected.size>0?`${selected.size} selected`:'Select all 全选'}</span>
           {selected.size>0 && (
-            <button className="btn btn-wa" onClick={bulkSend} style={{fontSize:12}}>
-              📱 Send WhatsApp to {selected.size} customers
+            <button className="btn btn-wa" onClick={bulkSend} style={{display:'flex',alignItems:'center',gap:5,fontSize:12}}>
+              <MessageCircle size={13} /> Send WhatsApp to {selected.size} customers
             </button>
           )}
         </div>
@@ -167,8 +171,8 @@ export default function Reminders() {
       {/* List */}
       {loading ? <div className="spinner"/> : currentList.length===0 ? (
         <div style={{textAlign:'center',padding:'40px',color:'var(--text3)'}}>
-          <div style={{fontSize:40}}>{TABS.find(t=>t.key===tab)?.icon||'🎉'}</div>
-          <div style={{fontSize:14,marginTop:8}}>No customers in this category</div>
+          <CheckCircle2 size={40} style={{margin:'0 auto 8px'}} />
+          <div style={{fontSize:14}}>No customers in this category</div>
         </div>
       ) : (
         <div style={{display:'flex',flexDirection:'column',gap:8}}>
@@ -208,12 +212,12 @@ export default function Reminders() {
                     </div>
                     <div style={{fontSize:12,color:'var(--text3)',marginTop:3}}>
                       {c.car_make} {c.car_model} · Last: {c.lastDate} · Due: {c.dueDate}
-                      {c.phone && <span> · 📱 {c.phone}</span>}
+                      {c.phone && <span style={{display:'inline-flex',alignItems:'center',gap:3}}> · <Phone size={10} /> {c.phone}</span>}
                     </div>
-                    {appt && <div style={{fontSize:12,color:'#1a7f37',marginTop:4,fontWeight:600}}>📅 Appointment: {appt}</div>}
+                    {appt && <div style={{display:'flex',alignItems:'center',gap:4,fontSize:12,color:'#1a7f37',marginTop:4,fontWeight:600}}><Calendar size={11} /> Appointment: {appt}</div>}
                     {note && noteOpen!==c.id && (
-                      <div style={{fontSize:11,color:'var(--text2)',marginTop:4,padding:'3px 8px',background:'#f9f9f9',borderRadius:6,display:'inline-block'}}>
-                        📝 {note}
+                      <div style={{fontSize:11,color:'var(--text2)',marginTop:4,padding:'3px 8px',background:'var(--bg2)',borderRadius:6,display:'inline-block'}}>
+                        {note}
                       </div>
                     )}
                     {noteOpen===c.id && (
@@ -241,10 +245,10 @@ export default function Reminders() {
                   <div style={{display:'flex',flexDirection:'column',gap:6,alignItems:'flex-end',flexShrink:0}}>
                     <div style={{display:'flex',gap:4,flexWrap:'wrap',justifyContent:'flex-end'}}>
                       {[
-                        {key:'messaged',  label:'📱 Msg Sent',  color:'#185fa5', bg:'#e6f1fb'},
-                        {key:'appointed', label:'📅 Appointed', color:'#1a7f37', bg:'#eaf3de'},
-                        {key:'sold',      label:'🚗 Car Sold',  color:'#D85A30', bg:'#fff3ef'},
-                        {key:'skip',      label:'❌ Skip',       color:'#888',    bg:'#f5f5f5'},
+                        {key:'messaged',  label:'Msg Sent',  color:'#185fa5', bg:'#e6f1fb'},
+                        {key:'appointed', label:'Appointed', color:'#1a7f37', bg:'#eaf3de'},
+                        {key:'sold',      label:'Car Sold',  color:'#D85A30', bg:'#fff3ef'},
+                        {key:'skip',      label:'Skip',       color:'#888',    bg:'#f5f5f5'},
                       ].map(s => (
                         <button key={s.key}
                           onClick={() => {
@@ -263,18 +267,18 @@ export default function Reminders() {
                       ))}
                     </div>
                     <div style={{display:'flex',gap:6}}>
-                      <button style={{padding:'5px 10px',border:'1px solid var(--border)',borderRadius:6,background:'#fff',fontSize:11,cursor:'pointer',color:'var(--text2)'}}
+                      <button style={{display:'flex',alignItems:'center',gap:4,padding:'5px 10px',border:'1px solid var(--border)',borderRadius:6,background:'var(--card)',fontSize:11,cursor:'pointer',color:'var(--text2)',fontFamily:'inherit'}}
                         onClick={()=>setNoteOpen(noteOpen===c.id?null:c.id)}>
-                        📝 {note?'Edit':'Note'}
+                        <MessageCircle size={11} /> {note?'Edit':'Note'}
                       </button>
                       {status==='appointed' && (
-                        <button style={{padding:'5px 10px',border:'1px solid #1a7f37',borderRadius:6,background:'#eaf3de',fontSize:11,cursor:'pointer',color:'#1a7f37'}}
+                        <button style={{display:'flex',alignItems:'center',gap:4,padding:'5px 10px',border:'1px solid #1a7f37',borderRadius:6,background:'#eaf3de',fontSize:11,cursor:'pointer',color:'#1a7f37',fontFamily:'inherit'}}
                           onClick={()=>setApptOpen(apptOpen===c.id?null:c.id)}>
-                          📅 {appt||'Set date'}
+                          <Calendar size={11} /> {appt||'Set date'}
                         </button>
                       )}
-                      <button className="btn btn-wa" onClick={()=>openWA(c)} style={{fontSize:12,padding:'5px 12px'}}>
-                        📱 WhatsApp
+                      <button className="btn btn-wa" onClick={()=>openWA(c)} style={{display:'flex',alignItems:'center',gap:5,fontSize:12,padding:'5px 12px'}}>
+                        <MessageCircle size={13} /> WhatsApp
                       </button>
                     </div>
                   </div>
