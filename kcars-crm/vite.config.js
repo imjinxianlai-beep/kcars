@@ -49,4 +49,19 @@ export default defineConfig({
     // the deps_temp infinite-optimization loop that occurs on slow machines.
     exclude: ['framer-motion'],
   },
+  build: {
+    rollupOptions: {
+      // framer-motion v12 ESM has deep circular deps that hang Rollup — use the pre-resolved CJS bundle instead.
+      plugins: [
+        {
+          name: 'framer-motion-cjs',
+          resolveId(id) {
+            if (id === 'framer-motion') {
+              return path.resolve(__dirname, 'node_modules/framer-motion/dist/cjs/index.js')
+            }
+          },
+        },
+      ],
+    },
+  },
 })
