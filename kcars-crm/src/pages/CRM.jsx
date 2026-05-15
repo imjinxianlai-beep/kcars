@@ -109,7 +109,8 @@ export default function CRM({ session, pendingCustomerId, onCustomerSelected }) 
   }
 
   const loadVehicles = async (custId) => {
-    const { data } = await getVehicles(custId)
+    const { data, error } = await getVehicles(custId)
+    console.log('[vehicles] custId:', custId, '| data:', data, '| error:', error)
     const vList = data || []
     setVehicles(vList)
     setActiveVehicle(vList.find(v => v.is_primary) || vList[0] || null)
@@ -288,7 +289,11 @@ export default function CRM({ session, pendingCustomerId, onCustomerSelected }) 
                         <button className="btn btn-wa" style={{ display:'flex', alignItems:'center', gap:5 }}><MessageCircle size={13} /> WhatsApp</button>
                       </a>
                     )}
-                    <button className="btn btn-primary" style={{ display:'flex', alignItems:'center', gap:5 }} onClick={() => setModal('invoice')}>
+                    <button
+                      className="btn btn-primary"
+                      style={{ display:'flex', alignItems:'center', gap:5, ...(activeVehicle ? {} : { opacity:0.4, cursor:'not-allowed' }) }}
+                      onClick={() => activeVehicle && setModal('invoice')}
+                      title={activeVehicle ? undefined : '请先选择车辆 Please select a vehicle first'}>
                       <Plus size={13} /> New Invoice
                     </button>
                     <button className="btn" style={{ display:'flex', alignItems:'center', gap:5 }} onClick={() => setModal('editCustomer')}><Pencil size={13} /> Edit</button>
@@ -599,7 +604,8 @@ function CustomerModal({ customer, onClose, onSave }) {
 
 // ─── Vehicle Section ────────────────────────────────────────────────────
 function VehicleSection({ customerId, vehicles, activeVehicle, onSelect, onRefresh }) {
-  const [modal, setModal] = useState(null) // null | { mode, vehicle }
+  const [modal, setModal]               = useState(null)
+  const [settingPrimary, setSettingPrimary] = useState(null)
 
   const handleDelete = async (v) => {
     if (vehicles.length <= 1) { alert('Cannot delete the only vehicle. 不能删除唯一车辆。'); return }
@@ -621,43 +627,90 @@ function VehicleSection({ customerId, vehicles, activeVehicle, onSelect, onRefre
     onRefresh()
   }
 
+  const handleSetPrimary = async (v) => {
+    setSettingPrimary(v.id)
+    await setPrimaryVehicle(v.id, customerId)
+    setSettingPrimary(null)
+    onRefresh()
+  }
+
   return (
-    <div style={{ marginTop: 10 }}>
-      <div className="section-title" style={{ marginBottom: 8 }}>
+    <div style={{ marginTop: 16 }}>
+      <div className="section-title" style={{ marginBottom: 10 }}>
         <span style={{ display:'flex', alignItems:'center', gap:5 }}><Car size={11} /> VEHICLES 车辆</span>
         <button className="btn" style={{ fontSize:11, padding:'3px 8px', display:'flex', alignItems:'center', gap:3 }}
           onClick={() => setModal({ mode:'add', vehicle:null })}>
           <Plus size={10} /> Add 添加
         </button>
       </div>
-      <div style={{ display:'flex', gap:8, flexWrap:'wrap', marginBottom:6 }}>
-        {vehicles.map(v => (
-          <div key={v.id}
-            onClick={() => onSelect(v)}
-            style={{
-              border: `2px solid ${activeVehicle?.id === v.id ? 'var(--orange)' : 'var(--border)'}`,
-              borderRadius: 10, padding: '8px 12px', cursor:'pointer', position:'relative',
-              background: activeVehicle?.id === v.id ? '#fff8f5' : 'var(--bg)',
-              minWidth: 130, transition: 'border-color .15s',
+      <div style={{ display:'flex', gap:10, flexWrap:'wrap' }}>
+        {vehicles.map(v => {
+          const isActive = activeVehicle?.id === v.id
+          return (
+            <div key={v.id} onClick={() => onSelect(v)} style={{
+              position: 'relative',
+              border: isActive ? '2px solid var(--orange)' : '1px solid #e3e8ee',
+              borderRadius: 12,
+              padding: '10px 12px 10px',
+              cursor: 'pointer',
+              background: isActive ? '#fff8f5' : '#fff',
+              minWidth: 150, maxWidth: 190,
+              boxShadow: isActive
+                ? 'rgba(0,55,112,0.08) 0 8px 24px, rgba(0,55,112,0.04) 0 2px 6px'
+                : 'rgba(0,55,112,0.06) 0 1px 3px',
+              transition: 'border-color .15s, box-shadow .15s',
             }}>
-            {v.is_primary && (
-              <span style={{ position:'absolute', top:4, right:6, fontSize:9, fontWeight:700, color:'var(--orange)', textTransform:'uppercase', letterSpacing:'.3px' }}>★ Primary</span>
-            )}
-            <div style={{ fontFamily:'monospace', fontWeight:700, fontSize:14, color:'var(--orange)', marginBottom:2 }}>{v.car_plate}</div>
-            <div style={{ fontSize:12, color:'var(--text2)' }}>{v.car_make} {v.car_model}</div>
-            {v.car_year && <div style={{ fontSize:11, color:'var(--text3)' }}>{v.car_year}</div>}
-            <div style={{ display:'flex', gap:4, marginTop:6 }}>
-              <button className="btn" style={{ fontSize:10, padding:'2px 6px' }}
-                onClick={e => { e.stopPropagation(); setModal({ mode:'edit', vehicle:v }) }}>
-                <Pencil size={9} />
-              </button>
-              <button className="btn" style={{ fontSize:10, padding:'2px 6px', color:'#c0392b' }}
-                onClick={e => { e.stopPropagation(); handleDelete(v) }}>
-                <Trash2 size={9} />
-              </button>
+              {/* Badge row — reserves space so plate is never covered */}
+              <div style={{ display:'flex', justifyContent:'flex-end', minHeight:18, marginBottom:3 }}>
+                {v.is_primary && (
+                  <span style={{
+                    background:'#fff0e6', color:'var(--orange)',
+                    fontSize:9, fontWeight:700, letterSpacing:'.5px',
+                    textTransform:'uppercase', padding:'2px 7px',
+                    borderRadius:9999, lineHeight:1.6,
+                  }}>PRIMARY</span>
+                )}
+              </div>
+              {/* Plate — main visual anchor */}
+              <div style={{
+                fontFamily:'monospace', fontWeight:600, fontSize:19,
+                color:'#0d253d', letterSpacing:'-0.3px',
+                fontFeatureSettings:'"tnum"', marginBottom:4, lineHeight:1,
+              }}>{v.car_plate}</div>
+              {/* Make · Model · Year */}
+              <div style={{ fontSize:12, color:'#64748d', lineHeight:1.4 }}>
+                {[v.car_make, v.car_model].filter(Boolean).join(' ') || <span style={{ color:'#b0bec9' }}>—</span>}
+                {v.car_year && <span style={{ marginLeft:5, color:'#a0aec0', fontSize:11 }}>{v.car_year}</span>}
+              </div>
+              {/* Actions */}
+              <div style={{ display:'flex', gap:4, marginTop:10, alignItems:'center' }}>
+                {!v.is_primary && (
+                  <button
+                    onClick={e => { e.stopPropagation(); handleSetPrimary(v) }}
+                    disabled={!!settingPrimary}
+                    style={{
+                      flex:1, fontSize:10, fontWeight:600, padding:'4px 0',
+                      borderRadius:9999, border:'1px solid #e3e8ee',
+                      background:'transparent', color:'#64748d',
+                      cursor: settingPrimary ? 'wait' : 'pointer',
+                      opacity: settingPrimary === v.id ? 0.5 : 1,
+                      transition:'.15s',
+                    }}>
+                    {settingPrimary === v.id ? '...' : '设为主车辆'}
+                  </button>
+                )}
+                <button className="btn" style={{ padding:'3px 7px', fontSize:10 }}
+                  onClick={e => { e.stopPropagation(); setModal({ mode:'edit', vehicle:v }) }}>
+                  <Pencil size={9} />
+                </button>
+                <button className="btn" style={{ padding:'3px 7px', fontSize:10, color:'#c0392b' }}
+                  onClick={e => { e.stopPropagation(); handleDelete(v) }}>
+                  <Trash2 size={9} />
+                </button>
+              </div>
             </div>
-          </div>
-        ))}
+          )
+        })}
       </div>
       {modal && (
         <VehicleModal
@@ -836,19 +889,17 @@ function InvoiceModal({ customer, vehicle, invoice, catalog, onClose, onSave }) 
         </div>
         <div className="modal-body">
           {/* Customer / Vehicle Info */}
-          <div style={{ background: 'var(--bg2)', borderRadius: 8, padding: '8px 12px', marginBottom: 14, fontSize: 13 }}>
-            <strong>{customer?.name}</strong>
-            <span style={{ color: 'var(--orange)', fontFamily: 'monospace', marginLeft: 10, fontWeight: 700 }}>
+          <div style={{ background: '#f6f9fc', border: '1px solid #e3e8ee', borderRadius: 10, padding: '10px 14px', marginBottom: 14, display:'flex', alignItems:'center', gap:12 }}>
+            <div>
+              <div style={{ fontSize:13, fontWeight:600, color:'#0d253d' }}>{customer?.name}</div>
+              <div style={{ fontSize:11, color:'#64748d', marginTop:1 }}>
+                {[vehicle?.car_make || customer?.car_make, vehicle?.car_model || customer?.car_model].filter(Boolean).join(' ')}
+                {(vehicle?.car_year) && <span style={{ marginLeft:5 }}>{vehicle.car_year}</span>}
+              </div>
+            </div>
+            <div style={{ marginLeft:'auto', fontFamily:'monospace', fontWeight:600, fontSize:16, color:'var(--orange)', letterSpacing:'-0.3px', fontFeatureSettings:'"tnum"' }}>
               {vehicle?.car_plate || customer?.car_plate}
-            </span>
-            <span style={{ color: 'var(--text3)', marginLeft: 8 }}>
-              {vehicle?.car_make || customer?.car_make} {vehicle?.car_model || customer?.car_model}
-            </span>
-            {vehicle && (
-              <span style={{ fontSize: 11, color: 'var(--text3)', marginLeft: 8 }}>
-                {vehicle.car_year ? `(${vehicle.car_year})` : ''}
-              </span>
-            )}
+            </div>
           </div>
 
           {/* Invoice type badge */}
