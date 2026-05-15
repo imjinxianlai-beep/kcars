@@ -144,6 +144,19 @@ export const deleteCatalogItem = (id) =>
   supabase.from('service_catalog').delete().eq('id', id)
 
 // ── Vehicles ───────────────────────────────────────────
+export const getVehicleMakes = () =>
+  supabase.from('vehicles')
+    .select('car_make')
+    .not('car_make', 'is', null)
+    .neq('car_make', '')
+
+export const getVehicleModels = (make) =>
+  supabase.from('vehicles')
+    .select('car_model')
+    .eq('car_make', make)
+    .not('car_model', 'is', null)
+    .neq('car_model', '')
+
 export const getVehicles = (customerId) =>
   supabase.from('vehicles').select('*')
     .eq('customer_id', customerId)

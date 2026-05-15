@@ -5,6 +5,7 @@ import { supabase, getCustomers, getTotalCustomers, searchCustomers, getCustomer
   upsertCustomer, updateCustomerTags, createInvoice, updateInvoice, updateInvoiceStatus,
   deleteInvoice, generateInvoiceNo, getCatalog, searchParts,
   getVehicles, addVehicle, updateVehicle, deleteVehicle, setPrimaryVehicle,
+  getVehicleMakes, getVehicleModels,
   getActivities, addActivity, deleteActivity,
   getNotes, addNote, updateNote, deleteNote,
   getTasks, addTask, updateTask, deleteTask,
@@ -725,6 +726,69 @@ function VehicleSection({ customerId, vehicles, activeVehicle, onSelect, onRefre
   )
 }
 
+// ─── ComboBox ────────────────────────────────────────────────────────────
+// Top-level to avoid re-mounting on every VehicleModal render (rerender-no-inline-components)
+function ComboBox({ value, onChange, suggestions, placeholder, transform }) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef(null)
+
+  useEffect(() => {
+    const handler = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false) }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
+
+  // Derive filtered list during render — no extra useEffect needed (rerender-derived-state-no-effect)
+  const filtered = value.trim()
+    ? suggestions.filter(s => s.toLowerCase().includes(value.toLowerCase()))
+    : suggestions
+
+  const commit = (raw) => {
+    onChange(transform ? transform(raw) : raw.trim())
+    setOpen(false)
+  }
+
+  return (
+    <div ref={ref} style={{ position: 'relative' }}>
+      <input
+        value={value}
+        onChange={e => { onChange(e.target.value); setOpen(true) }}
+        onFocus={() => setOpen(true)}
+        onBlur={() => { if (value.trim()) onChange(transform ? transform(value) : value.trim()) }}
+        placeholder={placeholder}
+        autoComplete="off"
+        spellCheck={false}
+      />
+      {open && filtered.length > 0 && (
+        <ul style={{
+          position: 'absolute', top: 'calc(100% + 3px)', left: 0, right: 0, zIndex: 300,
+          background: '#fff', border: '1px solid #e3e8ee', borderRadius: 8,
+          margin: 0, padding: '4px 0', listStyle: 'none',
+          boxShadow: 'rgba(0,55,112,0.08) 0 8px 24px, rgba(0,55,112,0.04) 0 2px 6px',
+          maxHeight: 224, overflowY: 'auto',
+        }}>
+          {filtered.slice(0, 8).map(s => (
+            <li key={s}
+              onMouseDown={e => { e.preventDefault(); commit(s) }}
+              style={{ padding: '8px 12px', cursor: 'pointer', fontSize: 13, color: '#0d253d', lineHeight: 1.4 }}
+              onMouseEnter={e => { e.currentTarget.style.background = '#f6f9fc' }}
+              onMouseLeave={e => { e.currentTarget.style.background = '' }}
+            >
+              {s}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  )
+}
+
+// Years list computed once at module load
+const VEHICLE_YEARS = (() => {
+  const cur = new Date().getFullYear()
+  return Array.from({ length: cur - 1990 + 1 }, (_, i) => cur - i)
+})()
+
 // ─── Vehicle Modal ──────────────────────────────────────────────────────
 function VehicleModal({ vehicle, mode, isOnly, onClose, onSave }) {
   const [form, setForm] = useState({
@@ -735,8 +799,31 @@ function VehicleModal({ vehicle, mode, isOnly, onClose, onSave }) {
     notes:      vehicle?.notes      || '',
     is_primary: vehicle?.is_primary ?? (mode === 'add' ? isOnly : false),
   })
+  const [makes, setMakes]   = useState([])
+  const [models, setModels] = useState([])
   const [saving, setSaving] = useState(false)
   const set = (k) => (e) => setForm(f => ({ ...f, [k]: e.target.value }))
+
+  // Fetch all makes once on mount
+  useEffect(() => {
+    getVehicleMakes().then(({ data }) => {
+      const unique = [...new Set((data || []).map(r => r.car_make).filter(Boolean))].sort()
+      setMakes(unique)
+    })
+  }, [])
+
+  // Fetch models whenever car_make settles (300ms debounce)
+  useEffect(() => {
+    const make = form.car_make.trim()
+    if (!make) { setModels([]); return }
+    const t = setTimeout(() => {
+      getVehicleModels(make).then(({ data }) => {
+        const unique = [...new Set((data || []).map(r => r.car_model).filter(Boolean))].sort()
+        setModels(unique)
+      })
+    }, 300)
+    return () => clearTimeout(t)
+  }, [form.car_make])
 
   const save = async () => {
     if (!form.car_plate.trim()) { alert('Car plate is required. 请输入车牌。'); return }
@@ -764,15 +851,30 @@ function VehicleModal({ vehicle, mode, isOnly, onClose, onSave }) {
           <div className="form-grid">
             <div className="form-row">
               <label>Make 品牌</label>
-              <input value={form.car_make} onChange={set('car_make')} placeholder="e.g. Toyota" />
+              <ComboBox
+                value={form.car_make}
+                onChange={v => setForm(f => ({ ...f, car_make: v }))}
+                suggestions={makes}
+                placeholder="e.g. Toyota"
+                transform={v => v.trim().replace(/\b\w/g, c => c.toUpperCase())}
+              />
             </div>
             <div className="form-row">
               <label>Model 型号</label>
-              <input value={form.car_model} onChange={set('car_model')} placeholder="e.g. Wish" />
+              <ComboBox
+                value={form.car_model}
+                onChange={v => setForm(f => ({ ...f, car_model: v }))}
+                suggestions={models}
+                placeholder="e.g. Wish"
+                transform={v => v.trim().toUpperCase()}
+              />
             </div>
             <div className="form-row">
               <label>Year 年份</label>
-              <input value={form.car_year} onChange={set('car_year')} placeholder="e.g. 2018" />
+              <select value={form.car_year} onChange={set('car_year')}>
+                <option value="">— select —</option>
+                {VEHICLE_YEARS.map(y => <option key={y} value={y}>{y}</option>)}
+              </select>
             </div>
           </div>
           <div className="form-row">
