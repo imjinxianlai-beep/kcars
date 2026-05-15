@@ -39,7 +39,6 @@ export default defineConfig({
   plugins: [react(), stableDevServer],
   resolve: {
     alias: {
-      'framer-motion': path.resolve(__dirname, 'src/lib/framer-motion-shim.jsx'),
       'lucide-react': path.resolve(__dirname, 'src/lib/lucide-react-shim.jsx'),
     },
   },
@@ -48,6 +47,26 @@ export default defineConfig({
     strictPort: true,
     watch: {
       ignored: ['**/.env', '**/vite.config.js', '**/package.json', '**/.git/**', '**/node_modules/**'],
+    },
+  },
+  optimizeDeps: {
+    // framer-motion v12 ships native ESM — exclude from esbuild pre-bundling to avoid
+    // the deps_temp infinite-optimization loop that occurs on slow machines.
+    exclude: ['framer-motion'],
+  },
+  build: {
+    rollupOptions: {
+      // framer-motion v12 ESM has deep circular deps that hang Rollup — use the pre-resolved CJS bundle.
+      plugins: [
+        {
+          name: 'framer-motion-cjs',
+          resolveId(id) {
+            if (id === 'framer-motion') {
+              return path.resolve(__dirname, 'node_modules/framer-motion/dist/cjs/index.js')
+            }
+          },
+        },
+      ],
     },
   },
 })
