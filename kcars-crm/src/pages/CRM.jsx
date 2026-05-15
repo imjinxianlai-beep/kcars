@@ -4,6 +4,7 @@ import { Users, Plus, Pencil, Trash2, MessageCircle, Car, ClipboardList, Wrench,
 import { supabase, getCustomers, getTotalCustomers, searchCustomers, getCustomer, getInvoices, deleteCustomer,
   upsertCustomer, updateCustomerTags, createInvoice, updateInvoice, updateInvoiceStatus,
   deleteInvoice, generateInvoiceNo, getCatalog, searchParts,
+  getVehicles, addVehicle, updateVehicle, deleteVehicle, setPrimaryVehicle,
   getActivities, addActivity, deleteActivity,
   getNotes, addNote, updateNote, deleteNote,
   getTasks, addTask, updateTask, deleteTask,
@@ -66,6 +67,8 @@ export default function CRM({ session, pendingCustomerId, onCustomerSelected }) 
   const [modal, setModal] = useState(null) // null | 'customer' | 'invoice' | 'catalog'
   const [editingInvoice, setEditingInvoice] = useState(null)
   const [tagFilter, setTagFilter] = useState(null)
+  const [vehicles, setVehicles] = useState([])
+  const [activeVehicle, setActiveVehicle] = useState(null)
   const searchRef = useRef(null)
 
   // Load customers on mount
@@ -105,6 +108,13 @@ export default function CRM({ session, pendingCustomerId, onCustomerSelected }) 
     setInvoices(data || [])
   }
 
+  const loadVehicles = async (custId) => {
+    const { data } = await getVehicles(custId)
+    const vList = data || []
+    setVehicles(vList)
+    setActiveVehicle(vList.find(v => v.is_primary) || vList[0] || null)
+  }
+
   // Search debounce
   useEffect(() => {
     const t = setTimeout(async () => {
@@ -119,7 +129,7 @@ export default function CRM({ session, pendingCustomerId, onCustomerSelected }) 
     setSelected(c)
     setOpenInv(null)
     setMobileView('detail')
-    await loadInvoices(c.id)
+    await Promise.all([loadInvoices(c.id), loadVehicles(c.id)])
   }
 
   // Auto-select customer when navigating from global search
@@ -204,7 +214,9 @@ export default function CRM({ session, pendingCustomerId, onCustomerSelected }) 
             {loading ? <div className="spinner" /> :
               customers.slice(0, 300)
                 .filter(c => !tagFilter || (c.tags || []).includes(tagFilter))
-                .map((c, idx) => (
+                .map((c, idx) => {
+                  const pv = c.vehicles?.find(v => v.is_primary) || c.vehicles?.[0]
+                  return (
                   <motion.div key={c.id}
                     className={`cust-item ${selected?.id === c.id ? 'active' : ''}`}
                     initial={{ y: 10, opacity: 0 }}
@@ -215,8 +227,8 @@ export default function CRM({ session, pendingCustomerId, onCustomerSelected }) 
                       <CustAvatar name={c.name} size={34} />
                       <div style={{ flex:1, minWidth:0 }}>
                         <div className="cust-name">{c.name}</div>
-                        <div className="cust-plate">{c.car_plate}</div>
-                        <div className="cust-sub">{c.car_make} {c.car_model}</div>
+                        <div className="cust-plate">{pv?.car_plate || c.car_plate}</div>
+                        <div className="cust-sub">{pv?.car_make || c.car_make} {pv?.car_model || c.car_model}</div>
                         {(c.tags || []).length > 0 && (
                           <div style={{ display:'flex', gap:3, flexWrap:'wrap', marginTop:3 }}>
                             {(c.tags || []).map(tag => {
@@ -231,7 +243,8 @@ export default function CRM({ session, pendingCustomerId, onCustomerSelected }) 
                       </div>
                     </div>
                   </motion.div>
-                ))}
+                  )
+                })}
             {customers.length > 300 && (
               <div className="sidebar-count">Showing 300 of {customers.length} — search to narrow</div>
             )}
@@ -288,22 +301,17 @@ export default function CRM({ session, pendingCustomerId, onCustomerSelected }) 
                 </div>
                 <div className="info-grid">
                   <div className="info-box">
-                    <div className="info-label">Car Plate 车牌</div>
-                    <div className="info-val plate">{selected.car_plate}</div>
-                  </div>
-                  <div className="info-box">
-                    <div className="info-label">Make 品牌</div>
-                    <div className="info-val">{selected.car_make || '—'}</div>
-                  </div>
-                  <div className="info-box">
-                    <div className="info-label">Model 型号</div>
-                    <div className="info-val">{selected.car_model || '—'}</div>
-                  </div>
-                  <div className="info-box">
                     <div className="info-label">Phone 电话</div>
                     <div className="info-val">{selected.phone || '—'}</div>
                   </div>
                 </div>
+                <VehicleSection
+                  customerId={selected.id}
+                  vehicles={vehicles}
+                  activeVehicle={activeVehicle}
+                  onSelect={setActiveVehicle}
+                  onRefresh={() => loadVehicles(selected.id)}
+                />
                 {/* Tags */}
                 <div style={{ display:'flex', gap:6, flexWrap:'wrap', alignItems:'center', paddingTop:4 }}>
                   {PRESET_TAGS.map(t => {
@@ -371,7 +379,13 @@ export default function CRM({ session, pendingCustomerId, onCustomerSelected }) 
       {modal === 'customer' && (
         <CustomerModal onClose={() => setModal(null)}
           onSave={async (data) => {
-            await upsertCustomer(data)
+            const { data: cust } = await upsertCustomer(data)
+            if (cust?.id && data.car_plate) {
+              const { data: existing } = await getVehicles(cust.id)
+              if (!existing?.length) {
+                await addVehicle({ customer_id: cust.id, car_plate: data.car_plate.trim().toUpperCase(), car_make: data.car_make || null, car_model: data.car_model || null, car_year: data.car_year || null, is_primary: true })
+              }
+            }
             loadCustomers()
             setModal(null)
           }} />
@@ -391,6 +405,7 @@ export default function CRM({ session, pendingCustomerId, onCustomerSelected }) 
       {modal === 'invoice' && (
         <InvoiceModal
           customer={selected}
+          vehicle={activeVehicle}
           invoice={editingInvoice}
           catalog={catalog}
           onClose={() => { setModal(null); setEditingInvoice(null) }}
@@ -398,7 +413,7 @@ export default function CRM({ session, pendingCustomerId, onCustomerSelected }) 
             if (editingInvoice) {
               await updateInvoice(editingInvoice.id, inv, items)
             } else {
-              await createInvoice({ ...inv, customer_id: selected.id }, items)
+              await createInvoice({ ...inv, customer_id: selected.id, vehicle_id: activeVehicle?.id ?? null }, items)
             }
             loadInvoices(selected.id)
             setModal(null); setEditingInvoice(null)
@@ -582,8 +597,154 @@ function CustomerModal({ customer, onClose, onSave }) {
   )
 }
 
+// ─── Vehicle Section ────────────────────────────────────────────────────
+function VehicleSection({ customerId, vehicles, activeVehicle, onSelect, onRefresh }) {
+  const [modal, setModal] = useState(null) // null | { mode, vehicle }
+
+  const handleDelete = async (v) => {
+    if (vehicles.length <= 1) { alert('Cannot delete the only vehicle. 不能删除唯一车辆。'); return }
+    if (!confirm(`Delete ${v.car_plate}? 确认删除？`)) return
+    await deleteVehicle(v.id)
+    onRefresh()
+  }
+
+  const handleSave = async (formData) => {
+    const { is_primary, ...rest } = formData
+    if (modal.mode === 'add') {
+      const { data: newV } = await addVehicle({ ...rest, customer_id: customerId, is_primary: false })
+      if (is_primary && newV) await setPrimaryVehicle(newV.id, customerId)
+    } else {
+      await updateVehicle(modal.vehicle.id, rest)
+      if (is_primary) await setPrimaryVehicle(modal.vehicle.id, customerId)
+    }
+    setModal(null)
+    onRefresh()
+  }
+
+  return (
+    <div style={{ marginTop: 10 }}>
+      <div className="section-title" style={{ marginBottom: 8 }}>
+        <span style={{ display:'flex', alignItems:'center', gap:5 }}><Car size={11} /> VEHICLES 车辆</span>
+        <button className="btn" style={{ fontSize:11, padding:'3px 8px', display:'flex', alignItems:'center', gap:3 }}
+          onClick={() => setModal({ mode:'add', vehicle:null })}>
+          <Plus size={10} /> Add 添加
+        </button>
+      </div>
+      <div style={{ display:'flex', gap:8, flexWrap:'wrap', marginBottom:6 }}>
+        {vehicles.map(v => (
+          <div key={v.id}
+            onClick={() => onSelect(v)}
+            style={{
+              border: `2px solid ${activeVehicle?.id === v.id ? 'var(--orange)' : 'var(--border)'}`,
+              borderRadius: 10, padding: '8px 12px', cursor:'pointer', position:'relative',
+              background: activeVehicle?.id === v.id ? '#fff8f5' : 'var(--bg)',
+              minWidth: 130, transition: 'border-color .15s',
+            }}>
+            {v.is_primary && (
+              <span style={{ position:'absolute', top:4, right:6, fontSize:9, fontWeight:700, color:'var(--orange)', textTransform:'uppercase', letterSpacing:'.3px' }}>★ Primary</span>
+            )}
+            <div style={{ fontFamily:'monospace', fontWeight:700, fontSize:14, color:'var(--orange)', marginBottom:2 }}>{v.car_plate}</div>
+            <div style={{ fontSize:12, color:'var(--text2)' }}>{v.car_make} {v.car_model}</div>
+            {v.car_year && <div style={{ fontSize:11, color:'var(--text3)' }}>{v.car_year}</div>}
+            <div style={{ display:'flex', gap:4, marginTop:6 }}>
+              <button className="btn" style={{ fontSize:10, padding:'2px 6px' }}
+                onClick={e => { e.stopPropagation(); setModal({ mode:'edit', vehicle:v }) }}>
+                <Pencil size={9} />
+              </button>
+              <button className="btn" style={{ fontSize:10, padding:'2px 6px', color:'#c0392b' }}
+                onClick={e => { e.stopPropagation(); handleDelete(v) }}>
+                <Trash2 size={9} />
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+      {modal && (
+        <VehicleModal
+          vehicle={modal.vehicle}
+          mode={modal.mode}
+          isOnly={vehicles.length === 0}
+          onClose={() => setModal(null)}
+          onSave={handleSave}
+        />
+      )}
+    </div>
+  )
+}
+
+// ─── Vehicle Modal ──────────────────────────────────────────────────────
+function VehicleModal({ vehicle, mode, isOnly, onClose, onSave }) {
+  const [form, setForm] = useState({
+    car_plate:  vehicle?.car_plate  || '',
+    car_make:   vehicle?.car_make   || '',
+    car_model:  vehicle?.car_model  || '',
+    car_year:   vehicle?.car_year   || '',
+    notes:      vehicle?.notes      || '',
+    is_primary: vehicle?.is_primary ?? (mode === 'add' ? isOnly : false),
+  })
+  const [saving, setSaving] = useState(false)
+  const set = (k) => (e) => setForm(f => ({ ...f, [k]: e.target.value }))
+
+  const save = async () => {
+    if (!form.car_plate.trim()) { alert('Car plate is required. 请输入车牌。'); return }
+    setSaving(true)
+    await onSave({ ...form, car_plate: form.car_plate.trim().toUpperCase() })
+    setSaving(false)
+  }
+
+  return (
+    <div className="modal-bg show" onClick={e => e.target === e.currentTarget && onClose()}>
+      <div className="modal" style={{ maxWidth: 420 }}>
+        <div className="modal-head">
+          <h3 style={{ display:'flex', alignItems:'center', gap:7 }}>
+            <Car size={14} /> {mode === 'add' ? 'Add Vehicle 添加车辆' : 'Edit Vehicle 编辑车辆'}
+          </h3>
+          <button className="modal-close" onClick={onClose}>×</button>
+        </div>
+        <div className="modal-body">
+          <div className="form-row">
+            <label>Car Plate 车牌 *</label>
+            <input value={form.car_plate} onChange={set('car_plate')}
+              placeholder="e.g. SKA1234A"
+              style={{ textTransform:'uppercase', fontFamily:'monospace', fontWeight:700 }} />
+          </div>
+          <div className="form-grid">
+            <div className="form-row">
+              <label>Make 品牌</label>
+              <input value={form.car_make} onChange={set('car_make')} placeholder="e.g. Toyota" />
+            </div>
+            <div className="form-row">
+              <label>Model 型号</label>
+              <input value={form.car_model} onChange={set('car_model')} placeholder="e.g. Wish" />
+            </div>
+            <div className="form-row">
+              <label>Year 年份</label>
+              <input value={form.car_year} onChange={set('car_year')} placeholder="e.g. 2018" />
+            </div>
+          </div>
+          <div className="form-row">
+            <label>Notes 备注</label>
+            <input value={form.notes} onChange={set('notes')} placeholder="optional" />
+          </div>
+          <div style={{ display:'flex', alignItems:'center', gap:8, padding:'8px 0' }}>
+            <input type="checkbox" id="isPrimary" checked={form.is_primary}
+              onChange={e => setForm(f => ({ ...f, is_primary: e.target.checked }))} />
+            <label htmlFor="isPrimary" style={{ fontSize:13, cursor:'pointer' }}>Set as primary vehicle 设为主车辆</label>
+          </div>
+          <div className="form-actions">
+            <button className="btn" onClick={onClose}>Cancel 取消</button>
+            <button className="btn btn-primary" onClick={save} disabled={saving}>
+              {saving ? 'Saving...' : '✓ Save 保存'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 // ─── Invoice Modal ──────────────────────────────────────────────────────
-function InvoiceModal({ customer, invoice, catalog, onClose, onSave }) {
+function InvoiceModal({ customer, vehicle, invoice, catalog, onClose, onSave }) {
   const ADVISORS = ['', 'JON', 'JIMMY', 'MENG', 'IVY', 'NORMAN', 'XIN', 'ZHU', 'TAO', 'XIONG']
   const MECHANICS = ['', 'NORMAN', 'XIN', 'ZHU', 'TAO', 'XIONG', 'MENG']
 
@@ -674,11 +835,20 @@ function InvoiceModal({ customer, invoice, catalog, onClose, onSave }) {
           <button className="modal-close" onClick={onClose}>×</button>
         </div>
         <div className="modal-body">
-          {/* Customer Info */}
+          {/* Customer / Vehicle Info */}
           <div style={{ background: 'var(--bg2)', borderRadius: 8, padding: '8px 12px', marginBottom: 14, fontSize: 13 }}>
             <strong>{customer?.name}</strong>
-            <span style={{ color: 'var(--orange)', fontFamily: 'monospace', marginLeft: 10, fontWeight: 700 }}>{customer?.car_plate}</span>
-            <span style={{ color: 'var(--text3)', marginLeft: 8 }}>{customer?.car_make} {customer?.car_model}</span>
+            <span style={{ color: 'var(--orange)', fontFamily: 'monospace', marginLeft: 10, fontWeight: 700 }}>
+              {vehicle?.car_plate || customer?.car_plate}
+            </span>
+            <span style={{ color: 'var(--text3)', marginLeft: 8 }}>
+              {vehicle?.car_make || customer?.car_make} {vehicle?.car_model || customer?.car_model}
+            </span>
+            {vehicle && (
+              <span style={{ fontSize: 11, color: 'var(--text3)', marginLeft: 8 }}>
+                {vehicle.car_year ? `(${vehicle.car_year})` : ''}
+              </span>
+            )}
           </div>
 
           {/* Invoice type badge */}

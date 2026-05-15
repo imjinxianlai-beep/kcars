@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback, Suspense, lazy, Component } from 'react'
-import { LayoutDashboard, Users, Bell, BarChart2, Columns3, Search, FileText, Wrench, User, X, AlertTriangle, Phone } from 'lucide-react'
+import { LayoutDashboard, Users, Bell, BarChart2, Columns3, Search, FileText, Wrench, User, X, AlertTriangle, Phone, Car } from 'lucide-react'
 import { supabase } from './lib/supabase'
 import Login from './pages/Login'
 import { motion, AnimatePresence } from 'framer-motion'
@@ -210,17 +210,22 @@ function GlobalSearch({ onClose, onNavigate }) {
   const search = useCallback(async (q) => {
     if (!q.trim()) { setResults(null); return }
     setLoading(true)
-    const [custRes, invRes, itemRes] = await Promise.all([
-      supabase.from('customers').select('id, name, car_plate, car_make, car_model, phone')
-        .or(`name.ilike.%${q}%,car_plate.ilike.%${q}%,car_make.ilike.%${q}%,car_model.ilike.%${q}%`)
-        .limit(5),
-      supabase.from('invoices').select('id, invoice_no, date, total, customer_id, customers(name, car_plate)')
+    const [custRes, vehRes, invRes, itemRes] = await Promise.all([
+      supabase.from('customers').select('id, name, phone')
+        .ilike('name', `%${q}%`).limit(5),
+      supabase.from('vehicles')
+        .select('id, car_plate, car_make, car_model, car_year, is_primary, customer_id, customers(id, name, phone)')
+        .or(`car_plate.ilike.%${q}%,car_make.ilike.%${q}%,car_model.ilike.%${q}%`)
+        .limit(8),
+      supabase.from('invoices').select('id, invoice_no, date, total, customer_id, customers(name)')
         .ilike('invoice_no', `%${q}%`).limit(5),
-      supabase.from('invoice_items').select('id, description, invoice_id, invoices(invoice_no, customer_id, customers(name, car_plate))')
+      supabase.from('invoice_items').select('id, description, invoice_id, invoices(invoice_no, customer_id, customers(name))')
         .ilike('description', `%${q}%`).limit(5),
     ])
+    const custIds = new Set((custRes.data || []).map(c => c.id))
     setResults({
       customers: custRes.data || [],
+      vehicles:  (vehRes.data || []).filter(v => !custIds.has(v.customer_id)),
       invoices:  invRes.data  || [],
       items:     itemRes.data || [],
     })
@@ -232,7 +237,7 @@ function GlobalSearch({ onClose, onNavigate }) {
     return () => clearTimeout(t)
   }, [query, search])
 
-  const total = results ? results.customers.length + results.invoices.length + results.items.length : 0
+  const total = results ? results.customers.length + (results.vehicles?.length || 0) + results.invoices.length + results.items.length : 0
 
   return (
     <div className="search-overlay-bg" onClick={e => e.target === e.currentTarget && onClose()}>
@@ -276,9 +281,29 @@ function GlobalSearch({ onClose, onNavigate }) {
                   <div style={{ flex:1, minWidth:0 }}>
                     <div style={{ fontWeight:600, fontSize:13 }}>{c.name}</div>
                     <div style={{ fontSize:11, color:'var(--text3)' }}>
-                      <span style={{ color:'var(--orange)', fontFamily:'monospace', fontWeight:700 }}>{c.car_plate}</span>
-                      {c.car_make && ` · ${c.car_make} ${c.car_model || ''}`}
-                      {c.phone && <> · <Phone size={9} style={{margin:'0 2px'}} />{c.phone}</>}
+                      {c.phone && <><Phone size={9} style={{margin:'0 2px'}} />{c.phone}</>}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </>
+          )}
+
+          {results && results.vehicles?.length > 0 && (
+            <>
+              <div className="search-group-label" style={{ display:'flex', alignItems:'center', gap:5, marginTop: results.customers.length ? 8 : 0 }}><Car size={10} /> Vehicles 车辆</div>
+              {results.vehicles.map(v => (
+                <div key={v.id} className="search-result-item"
+                  onClick={() => onNavigate('crm', v.customer_id)}>
+                  <div style={{ width:32, height:32, borderRadius:8, background:'var(--orange-light)', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}><Car size={15} color="var(--orange)" /></div>
+                  <div style={{ flex:1, minWidth:0 }}>
+                    <div style={{ fontWeight:600, fontSize:13 }}>
+                      <span style={{ color:'var(--orange)', fontFamily:'monospace', fontWeight:700 }}>{v.car_plate}</span>
+                      {v.is_primary && <span style={{ fontSize:9, color:'var(--orange)', marginLeft:5 }}>★</span>}
+                    </div>
+                    <div style={{ fontSize:11, color:'var(--text3)' }}>
+                      {v.car_make} {v.car_model}{v.car_year ? ` (${v.car_year})` : ''}
+                      {v.customers?.name && ` · ${v.customers.name}`}
                     </div>
                   </div>
                 </div>
@@ -296,7 +321,7 @@ function GlobalSearch({ onClose, onNavigate }) {
                   <div style={{ flex:1, minWidth:0 }}>
                     <div style={{ fontWeight:600, fontSize:13 }}>{inv.invoice_no}</div>
                     <div style={{ fontSize:11, color:'var(--text3)' }}>
-                      {inv.customers?.name} · {inv.date}
+                      {inv.customers?.name}{inv.date ? ` · ${inv.date}` : ''}
                       <span style={{ color:'var(--orange)', marginLeft:8, fontWeight:600 }}>
                         ${parseFloat(inv.total||0).toFixed(2)}
                       </span>

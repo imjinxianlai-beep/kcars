@@ -14,14 +14,16 @@ export const supabase = createClient(supabaseUrl, supabaseKey, {
 
 // ── Customers ──────────────────────────────────────────
 export const getCustomers = (from = 0, to = 999) =>
-  supabase.from('customers').select('*', { count: 'exact' })
+  supabase.from('customers')
+    .select('*, vehicles(id, car_plate, car_make, car_model, car_year, is_primary)', { count: 'exact' })
     .order('updated_at', { ascending: false }).range(from, to)
 
 export const getTotalCustomers = () =>
   supabase.from('customers').select('*', { count: 'exact', head: true })
 
 export const searchCustomers = (q) =>
-  supabase.from('customers').select('*')
+  supabase.from('customers')
+    .select('*, vehicles(id, car_plate, car_make, car_model, car_year, is_primary)')
     .or(`name.ilike.%${q}%,car_plate.ilike.%${q}%,car_model.ilike.%${q}%,car_make.ilike.%${q}%`)
     .order('updated_at', { ascending: false })
     .limit(100)
@@ -140,6 +142,27 @@ export const updateCatalogItem = (id, data) =>
 
 export const deleteCatalogItem = (id) =>
   supabase.from('service_catalog').delete().eq('id', id)
+
+// ── Vehicles ───────────────────────────────────────────
+export const getVehicles = (customerId) =>
+  supabase.from('vehicles').select('*')
+    .eq('customer_id', customerId)
+    .order('is_primary', { ascending: false })
+    .order('created_at', { ascending: true })
+
+export const addVehicle = (data) =>
+  supabase.from('vehicles').insert(data).select().single()
+
+export const updateVehicle = (id, data) =>
+  supabase.from('vehicles').update(data).eq('id', id).select().single()
+
+export const deleteVehicle = (id) =>
+  supabase.from('vehicles').delete().eq('id', id)
+
+export const setPrimaryVehicle = async (vehicleId, customerId) => {
+  await supabase.from('vehicles').update({ is_primary: false }).eq('customer_id', customerId)
+  return supabase.from('vehicles').update({ is_primary: true }).eq('id', vehicleId).select().single()
+}
 
 // ── Parts Library ──────────────────────────────────────
 export const getParts = ({ category } = {}) => {
