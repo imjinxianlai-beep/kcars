@@ -140,3 +140,24 @@ export const updateCatalogItem = (id, data) =>
 
 export const deleteCatalogItem = (id) =>
   supabase.from('service_catalog').delete().eq('id', id)
+
+// ── Parts Library ──────────────────────────────────────
+export const getParts = ({ category } = {}) => {
+  let q = supabase.from('parts_library').select('*').order('category').order('part_name')
+  if (category) q = q.eq('category', category)
+  return q
+}
+
+export const searchParts = (query) =>
+  supabase.from('parts_library').select('*')
+    .or(`part_name.ilike.%${query}%,vehicle_text.ilike.%${query}%,brand.ilike.%${query}%,vehicle_model.ilike.%${query}%`)
+    .order('category').order('part_name').limit(50)
+
+export const addPart = (data) =>
+  supabase.from('parts_library').insert(data).select().single()
+
+export const updatePart = (id, data) =>
+  supabase.from('parts_library').update(data).eq('id', id).select().single()
+
+export const deletePart = (id) =>
+  supabase.from('parts_library').delete().eq('id', id)

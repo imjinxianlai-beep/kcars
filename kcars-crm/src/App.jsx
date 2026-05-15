@@ -9,6 +9,7 @@ const Reminders = lazy(() => import('./pages/Reminders'))
 const Reports   = lazy(() => import('./pages/Reports'))
 const Dashboard = lazy(() => import('./pages/Dashboard'))
 const Kanban    = lazy(() => import('./pages/Kanban'))
+const Parts     = lazy(() => import('./pages/Parts'))
 
 class ErrorBoundary extends Component {
   constructor(props) { super(props); this.state = { error: null } }
@@ -42,6 +43,7 @@ const NAV_ITEMS = [
   { key: 'reminders', Icon: Bell,            label: 'Reminders 提醒' },
   { key: 'reports',   Icon: BarChart2,       label: 'Reports 报表' },
   { key: 'kanban',    Icon: Columns3,        label: 'Work Board 工单' },
+  { key: 'parts',     Icon: Wrench,          label: 'Parts 配件' },
 ]
 
 export default function App() {
@@ -160,6 +162,7 @@ export default function App() {
                   {page === 'reports'   && <Reports />}
                   {page === 'dashboard' && <Dashboard onNavigate={setPage} />}
                   {page === 'kanban'    && <Kanban />}
+                  {page === 'parts'     && <Parts />}
                 </Suspense>
               </motion.div>
             </AnimatePresence>

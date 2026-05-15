@@ -3,7 +3,7 @@ import { motion } from 'framer-motion'
 import { Users, Plus, Pencil, Trash2, MessageCircle, Car, ClipboardList, Wrench, Phone, Calendar, FileText, Download, Printer, CheckCircle2, DollarSign, RotateCcw, Clock, AlertTriangle } from 'lucide-react'
 import { supabase, getCustomers, getTotalCustomers, searchCustomers, getCustomer, getInvoices, deleteCustomer,
   upsertCustomer, updateCustomerTags, createInvoice, updateInvoice, updateInvoiceStatus,
-  deleteInvoice, generateInvoiceNo, getCatalog,
+  deleteInvoice, generateInvoiceNo, getCatalog, searchParts,
   getActivities, addActivity, deleteActivity,
   getNotes, addNote, updateNote, deleteNote,
   getTasks, addTask, updateTask, deleteTask,
@@ -604,10 +604,24 @@ function InvoiceModal({ customer, invoice, catalog, onClose, onSave }) {
   )
   const [activeCat, setActiveCat] = useState(null)
   const [saving, setSaving] = useState(false)
+  const [partsQuery, setPartsQuery]   = useState('')
+  const [partsResults, setPartsResults] = useState([])
+  const [partsLoading, setPartsLoading] = useState(false)
 
   useEffect(() => {
     if (!invoice) generateInvoiceNo().then(setInvNo)
   }, [])
+
+  useEffect(() => {
+    if (!partsQuery.trim()) { setPartsResults([]); return }
+    setPartsLoading(true)
+    const t = setTimeout(async () => {
+      const { data } = await searchParts(partsQuery.trim())
+      setPartsResults(data || [])
+      setPartsLoading(false)
+    }, 250)
+    return () => clearTimeout(t)
+  }, [partsQuery])
 
   const detectType = (cartItems) => {
     const descs = cartItems.map(i => i.desc.toLowerCase())
@@ -761,17 +775,86 @@ function InvoiceModal({ customer, invoice, catalog, onClose, onSave }) {
             </div>
           )}
 
+          {/* Parts Picker */}
+          <div style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', color: 'var(--text3)', letterSpacing: '.5px', marginBottom: 8, marginTop: 14 }}>
+            Parts 配件 <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>— search &amp; add from parts library</span>
+          </div>
+          <div style={{ position: 'relative', marginBottom: 8 }}>
+            <input
+              value={partsQuery}
+              onChange={e => setPartsQuery(e.target.value)}
+              placeholder="Search part name, vehicle, brand... 搜索配件名、车型"
+              style={{ width: '100%', boxSizing: 'border-box', paddingRight: partsQuery ? 28 : undefined }}
+            />
+            {partsQuery && (
+              <button onClick={() => { setPartsQuery(''); setPartsResults([]) }}
+                style={{ position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: 'var(--text3)', fontSize: 14, lineHeight: 1 }}>
+                ×
+              </button>
+            )}
+          </div>
+          {partsLoading && <div style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 8 }}>Searching... 搜索中</div>}
+          {partsResults.length > 0 && (
+            <div style={{ border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden', marginBottom: 12 }}>
+              {partsResults.map(p => {
+                const hasPrice = p.selling_price != null
+                const inCart = cart.some(c => c.desc === p.part_name && c.partId === p.id)
+                return (
+                  <div key={p.id}
+                    style={{
+                      display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px',
+                      borderBottom: '1px solid var(--border2)', fontSize: 13,
+                      background: inCart ? 'var(--orange-light, #fff8f5)' : 'var(--bg)',
+                      cursor: 'pointer',
+                    }}
+                    onClick={() => {
+                      if (inCart) {
+                        setCart(cart.filter(c => !(c.desc === p.part_name && c.partId === p.id)))
+                      } else {
+                        setCart([...cart, {
+                          desc: p.part_name,
+                          cat: p.category || 'Parts',
+                          cost: hasPrice ? parseFloat(p.selling_price) : 0,
+                          partId: p.id,
+                          priceText: !hasPrice ? (p.selling_price_text || null) : null,
+                        }])
+                      }
+                    }}>
+                    <input type="checkbox" readOnly checked={inCart} style={{ pointerEvents: 'none' }} />
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.part_name}</div>
+                      <div style={{ fontSize: 11, color: 'var(--text3)' }}>{p.vehicle_text}{p.category ? ` · ${p.category}` : ''}</div>
+                    </div>
+                    <div style={{ fontSize: 12, fontFamily: 'monospace', flexShrink: 0 }}>
+                      {hasPrice
+                        ? <span style={{ color: 'var(--orange)', fontWeight: 700 }}>${parseFloat(p.selling_price).toFixed(2)}</span>
+                        : <span style={{ color: '#c0392b', fontSize: 11 }}>{p.selling_price_text || 'Price TBC'}</span>
+                      }
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+
           {/* Cart */}
           <div className="cart-section">
             <div className="cart-label">🛒 Selected Items {cart.length > 0 && `(${cart.length})`}</div>
             {cart.length === 0
               ? <div className="cart-empty">Tick items above to add them here 勾选上方项目</div>
               : cart.map((item, i) => (
-                <div key={i} className="cart-item">
-                  <div className="cart-item-name">{item.desc}</div>
-                  <input type="number" style={{ width: 80, padding: '3px 6px', border: '1px solid var(--border)', borderRadius: 5, fontSize: 12, textAlign: 'right' }}
-                    value={item.cost} onChange={e => updateCost(i, e.target.value)} min="0" />
-                  <button className="cart-item-del" onClick={() => setCart(cart.filter((_, j) => j !== i))}>×</button>
+                <div key={i} className="cart-item" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 4 }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                    <div className="cart-item-name">{item.desc}</div>
+                    <input type="number" style={{ width: 80, padding: '3px 6px', border: `1px solid ${item.priceText ? '#e74c3c' : 'var(--border)'}`, borderRadius: 5, fontSize: 12, textAlign: 'right' }}
+                      value={item.cost} onChange={e => updateCost(i, e.target.value)} min="0" />
+                    <button className="cart-item-del" onClick={() => setCart(cart.filter((_, j) => j !== i))}>×</button>
+                  </div>
+                  {item.priceText && (
+                    <div style={{ fontSize: 11, color: '#c0392b', paddingLeft: 2 }}>
+                      ⚠ Price TBC — quoted range: {item.priceText}. Please confirm price above.
+                    </div>
+                  )}
                 </div>
               ))}
             {cart.length > 0 && (
