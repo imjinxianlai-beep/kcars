@@ -30,7 +30,18 @@ const getInitials = (name = '') => {
   return parts.length >= 2 ? (parts[0][0] + parts[parts.length-1][0]).toUpperCase() : name.slice(0,2).toUpperCase()
 }
 
-function CustAvatar({ name = '', size = 32 }) {
+function CustAvatar({ name = '', size = 32, type = 'individual' }) {
+  if (type === 'company') {
+    return (
+      <div style={{
+        width: size, height: size, borderRadius: Math.round(size * 0.22),
+        background: '#2d3748', color: '#fff',
+        display:'flex', alignItems:'center', justifyContent:'center',
+        fontSize: Math.round(size * 0.3), fontWeight: 700, flexShrink: 0,
+        letterSpacing: '-.3px',
+      }}>Co</div>
+    )
+  }
   const { bg, fg } = getAvatarPalette(name)
   return (
     <div style={{
@@ -110,8 +121,7 @@ export default function CRM({ session, pendingCustomerId, onCustomerSelected }) 
   }
 
   const loadVehicles = async (custId) => {
-    const { data, error } = await getVehicles(custId)
-    console.log('[vehicles] custId:', custId, '| data:', data, '| error:', error)
+    const { data } = await getVehicles(custId)
     const vList = data || []
     setVehicles(vList)
     setActiveVehicle(vList.find(v => v.is_primary) || vList[0] || null)
@@ -226,9 +236,12 @@ export default function CRM({ session, pendingCustomerId, onCustomerSelected }) 
                     transition={{ duration: 0.18, delay: Math.min(idx * 0.03, 0.3) }}
                     onClick={() => selectCustomer(c)}>
                     <div style={{ display:'flex', gap:10, alignItems:'flex-start' }}>
-                      <CustAvatar name={c.name} size={34} />
+                      <CustAvatar name={c.name} size={34} type={c.customer_type} />
                       <div style={{ flex:1, minWidth:0 }}>
                         <div className="cust-name">{c.name}</div>
+                        {c.customer_type === 'company' && c.contact_person && (
+                          <div style={{ fontSize:11, color:'var(--text3)', marginTop:1 }}>{c.contact_person}</div>
+                        )}
                         <div className="cust-plate">{pv?.car_plate || c.car_plate}</div>
                         <div className="cust-sub">{pv?.car_make || c.car_make} {pv?.car_model || c.car_model}</div>
                         {(c.tags || []).length > 0 && (
@@ -274,7 +287,7 @@ export default function CRM({ session, pendingCustomerId, onCustomerSelected }) 
               <div className="card">
                 <div className="card-header">
                   <div style={{ display:'flex', alignItems:'center', gap:14 }}>
-                    <CustAvatar name={selected.name} size={48} />
+                    <CustAvatar name={selected.name} size={48} type={selected.customer_type} />
                     <div>
                       <div className="customer-name">{selected.name}</div>
                       <div className="customer-meta">
@@ -310,6 +323,18 @@ export default function CRM({ session, pendingCustomerId, onCustomerSelected }) 
                     <div className="info-label">Phone 电话</div>
                     <div className="info-val">{selected.phone || '—'}</div>
                   </div>
+                  {selected.customer_type === 'company' && selected.contact_person && (
+                    <div className="info-box">
+                      <div className="info-label">Contact 联系人</div>
+                      <div className="info-val">{selected.contact_person}</div>
+                    </div>
+                  )}
+                  {selected.customer_type === 'company' && selected.uen && (
+                    <div className="info-box">
+                      <div className="info-label">UEN</div>
+                      <div className="info-val" style={{ fontFamily:'monospace', fontSize:12 }}>{selected.uen}</div>
+                    </div>
+                  )}
                 </div>
                 <VehicleSection
                   customerId={selected.id}
@@ -511,64 +536,105 @@ function InvoiceCard({ inv, open, onToggle, onEdit, onDelete, onStatusChange, cu
 
 // ─── Customer Modal ─────────────────────────────────────────────────────
 function CustomerModal({ customer, onClose, onSave }) {
+  const [custType, setCustType] = useState(customer?.customer_type || 'individual')
   const [form, setForm] = useState({
-    name: customer?.name || '',
-    phone: customer?.phone || '',
-    car_plate: customer?.car_plate || '',
-    car_make: customer?.car_make || '',
-    car_model: customer?.car_model || '',
-    car_year: customer?.car_year || '',
-    notes: customer?.notes || '',
-    tags: customer?.tags || [],
+    name:           customer?.name           || '',
+    phone:          customer?.phone          || '',
+    car_plate:      customer?.car_plate      || null,
+    notes:          customer?.notes          || '',
+    tags:           customer?.tags           || [],
+    contact_person: customer?.contact_person || '',
+    uen:            customer?.uen            || '',
   })
   const toggleTag = (key) => setForm(f => ({
-    ...f,
-    tags: f.tags.includes(key) ? f.tags.filter(t => t !== key) : [...f.tags, key]
+    ...f, tags: f.tags.includes(key) ? f.tags.filter(t => t !== key) : [...f.tags, key],
   }))
   const [saving, setSaving] = useState(false)
   const set = (k) => (e) => setForm(f => ({ ...f, [k]: e.target.value }))
 
   const save = async () => {
-    if (!form.name.trim() || !form.car_plate.trim()) { alert('Name and plate required.'); return }
+    if (!form.name.trim()) { alert('Name is required. 请输入名称。'); return }
     setSaving(true)
-    await onSave({ ...form, car_plate: form.car_plate.trim().toUpperCase() })
+    await onSave({
+      ...form,
+      name: form.name.trim(),
+      customer_type: custType,
+      contact_person: custType === 'company' ? (form.contact_person.trim() || null) : null,
+      uen:            custType === 'company' ? (form.uen.trim() || null) : null,
+    })
     setSaving(false)
   }
+
+  const isCompany = custType === 'company'
 
   return (
     <div className="modal-bg show" onClick={e => e.target === e.currentTarget && onClose()}>
       <div className="modal">
         <div className="modal-head">
-          <h3 style={{ display:'flex', alignItems:'center', gap:7 }}>{customer ? <><Pencil size={14} /> Edit Customer 编辑客户</> : <><Users size={14} /> Add Customer 新增客户</>}</h3>
+          <h3 style={{ display:'flex', alignItems:'center', gap:7 }}>
+            {customer ? <><Pencil size={14} /> Edit Customer 编辑客户</> : <><Users size={14} /> Add Customer 新增客户</>}
+          </h3>
           <button className="modal-close" onClick={onClose}>×</button>
         </div>
         <div className="modal-body">
-          <div className="form-grid">
-            <div className="form-row">
-              <label>Name 姓名 *</label>
-              <input value={form.name} onChange={set('name')} placeholder="e.g. Tan Wei Ming" />
-            </div>
-            <div className="form-row">
-              <label>Phone 电话</label>
-              <input value={form.phone} onChange={set('phone')} placeholder="e.g. 91234567" />
-            </div>
-          </div>
-          <div className="form-row">
-            <label>Car Plate 车牌 *</label>
-            <input value={form.car_plate} onChange={set('car_plate')}
-              placeholder="e.g. SKA1234A" style={{ textTransform: 'uppercase', fontFamily: 'monospace', fontWeight: 700 }} />
-          </div>
-          <div className="form-grid">
-            <div className="form-row">
-              <label>Make 品牌</label>
-              <input value={form.car_make} onChange={set('car_make')} placeholder="e.g. Toyota" />
-            </div>
-            <div className="form-row">
-              <label>Model 型号</label>
-              <input value={form.car_model} onChange={set('car_model')} placeholder="e.g. Wish" />
+
+          {/* Type toggle — segmented control */}
+          <div style={{ marginBottom: 18 }}>
+            <div style={{
+              display: 'inline-flex', padding: 3, borderRadius: 9999,
+              background: '#f6f9fc', border: '1px solid #e3e8ee',
+            }}>
+              {[['individual', 'Individual 个人'], ['company', 'Company 公司']].map(([val, label]) => (
+                <button key={val} type="button" onClick={() => setCustType(val)} style={{
+                  padding: '5px 18px', borderRadius: 9999, border: 'none',
+                  background: custType === val ? 'var(--orange)' : 'transparent',
+                  color: custType === val ? '#fff' : '#64748d',
+                  fontSize: 13, fontWeight: 600, cursor: 'pointer', transition: '.15s',
+                  whiteSpace: 'nowrap',
+                }}>{label}</button>
+              ))}
             </div>
           </div>
-          <div className="form-row">
+
+          {/* Individual fields */}
+          {!isCompany && (
+            <div className="form-grid">
+              <div className="form-row" style={{ gridColumn: '1 / -1' }}>
+                <label>Name 姓名 *</label>
+                <input value={form.name} onChange={set('name')} placeholder="e.g. Tan Wei Ming" />
+              </div>
+              <div className="form-row" style={{ gridColumn: '1 / -1' }}>
+                <label>Phone 电话</label>
+                <input value={form.phone} onChange={set('phone')} placeholder="e.g. 91234567" />
+              </div>
+            </div>
+          )}
+
+          {/* Company fields */}
+          {isCompany && (
+            <div className="form-grid">
+              <div className="form-row" style={{ gridColumn: '1 / -1' }}>
+                <label>Company Name 公司名 *</label>
+                <input value={form.name} onChange={set('name')} placeholder="e.g. ABC Auto Pte Ltd" />
+              </div>
+              <div className="form-row">
+                <label>UEN <span style={{ fontWeight:400, color:'var(--text3)', fontSize:11 }}>统一企业号</span></label>
+                <input value={form.uen} onChange={set('uen')} placeholder="e.g. 202012345K"
+                  style={{ fontFamily:'monospace' }} />
+              </div>
+              <div className="form-row">
+                <label>Phone 电话</label>
+                <input value={form.phone} onChange={set('phone')} placeholder="e.g. 62345678" />
+              </div>
+              <div className="form-row" style={{ gridColumn: '1 / -1' }}>
+                <label>Contact Person 联系人</label>
+                <input value={form.contact_person} onChange={set('contact_person')} placeholder="e.g. David Lim" />
+              </div>
+            </div>
+          )}
+
+          {/* Tags */}
+          <div className="form-row" style={{ marginTop: 4 }}>
             <label>Tags 标签</label>
             <div style={{ display:'flex', gap:6, flexWrap:'wrap' }}>
               {PRESET_TAGS.map(t => {
@@ -580,17 +646,18 @@ function CustomerModal({ customer, onClose, onSave }) {
                     background: has ? t.bg : 'transparent',
                     color: has ? t.color : 'var(--text3)',
                     fontSize:11, fontWeight:600, cursor:'pointer', transition:'.15s',
-                  }}>
-                    {t.emoji} {t.label}
-                  </button>
+                  }}>{t.label}</button>
                 )
               })}
             </div>
           </div>
+
+          {/* Notes */}
           <div className="form-row">
             <label>Notes 备注</label>
             <textarea value={form.notes} onChange={set('notes')} placeholder="Any notes..." />
           </div>
+
           <div className="form-actions">
             <button className="btn" onClick={onClose}>Cancel 取消</button>
             <button className="btn btn-primary" onClick={save} disabled={saving}>
