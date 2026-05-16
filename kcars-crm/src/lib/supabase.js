@@ -144,6 +144,12 @@ export const deleteCatalogItem = (id) =>
   supabase.from('service_catalog').delete().eq('id', id)
 
 // ── Vehicles ───────────────────────────────────────────
+export const getCustomerByVehiclePlate = (plate) =>
+  supabase.from('vehicles')
+    .select('id, car_plate, car_make, car_model, car_year, customers(id, name, phone)')
+    .ilike('car_plate', plate.trim())
+    .maybeSingle()
+
 export const getVehicleMakes = () =>
   supabase.from('vehicles')
     .select('car_make')

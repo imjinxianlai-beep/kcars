@@ -161,7 +161,7 @@ export default function App() {
                   {page === 'reminders' && <Reminders />}
                   {page === 'reports'   && <Reports />}
                   {page === 'dashboard' && <Dashboard onNavigate={setPage} />}
-                  {page === 'kanban'    && <Kanban />}
+                  {page === 'kanban'    && <Kanban onSelectCustomer={(id) => { setPendingCustomerId(id); setPage('crm') }} />}
                   {page === 'parts'     && <Parts />}
                 </Suspense>
               </motion.div>
