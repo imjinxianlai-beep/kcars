@@ -1,5 +1,5 @@
-import { useState, useEffect, useCallback } from 'react'
-import { supabase, createInvoice, generateInvoiceNo, getCustomerByVehiclePlate, upsertCustomer, addVehicle } from '../lib/supabase'
+import { useState, useEffect, useCallback, useRef } from 'react'
+import { supabase, createInvoice, generateInvoiceNo, searchVehiclesAndCustomers, upsertCustomer, addVehicle } from '../lib/supabase'
 import { Clock, Wrench, Package, CheckCircle2, CircleDollarSign, Columns3, RefreshCw, Plus } from 'lucide-react'
 
 const COLUMNS = [
@@ -13,78 +13,212 @@ const COLUMNS = [
 const ADVISORS  = ['JON', 'JIMMY', 'MENG', 'IVY', 'NORMAN', 'XIN', 'ZHU', 'TAO', 'XIONG']
 const MECHANICS = ['NORMAN', 'XIN', 'ZHU', 'TAO', 'XIONG', 'MENG']
 
+// ── Helpers ──────────────────────────────────────────────────────────────────
+function mergeSearchResults({ vehicles, customers }) {
+  const seenIds = new Set()
+  const items = []
+  for (const v of vehicles) {
+    if (items.filter(i => i.type === 'vehicle').length >= 8) break
+    if (seenIds.has(v.id)) continue
+    seenIds.add(v.id)
+    items.push({
+      type: 'vehicle', vehicleId: v.id,
+      customerId: v.customers?.id ?? null,
+      car_plate: v.car_plate ?? '',
+      customer_name: v.customers?.name ?? '',
+      car_make: v.car_make ?? '', car_model: v.car_model ?? '',
+    })
+  }
+  for (const c of customers) {
+    const cvs = (c.vehicles || []).filter(v => v.car_plate && !seenIds.has(v.id))
+    if (!cvs.length) continue
+    if (cvs.length > 1) items.push({ type: 'group', customer_name: c.name })
+    for (const v of cvs) {
+      if (items.filter(i => i.type === 'vehicle').length >= 8) break
+      seenIds.add(v.id)
+      items.push({
+        type: 'vehicle', vehicleId: v.id, customerId: c.id,
+        car_plate: v.car_plate ?? '', customer_name: c.name,
+        car_make: v.car_make ?? '', car_model: v.car_model ?? '',
+      })
+    }
+  }
+  return items
+}
+
+// ── Vehicle Search Box ────────────────────────────────────────────────────────
+function VehicleSearchBox({ selected, onSelect, onClear, onCreateNew }) {
+  const [query, setQuery]           = useState('')
+  const [rawResults, setRawResults] = useState(null)
+  const [searching, setSearching]   = useState(false)
+  const [open, setOpen]             = useState(false)
+  const containerRef                = useRef(null)
+
+  // Debounced search
+  useEffect(() => {
+    if (!query.trim()) { setRawResults(null); return }
+    const t = setTimeout(async () => {
+      setSearching(true)
+      const res = await searchVehiclesAndCustomers(query.trim())
+      setRawResults(res)
+      setSearching(false)
+      setOpen(true)
+    }, 250)
+    return () => clearTimeout(t)
+  }, [query])
+
+  // Close on outside click
+  useEffect(() => {
+    const handler = (e) => { if (!containerRef.current?.contains(e.target)) setOpen(false) }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
+
+  const items = rawResults ? mergeSearchResults(rawResults) : []
+  const noResults = rawResults && items.filter(i => i.type === 'vehicle').length === 0
+
+  if (selected) {
+    return (
+      <div style={{ display:'flex', alignItems:'center', gap:8, padding:'8px 12px', borderRadius:9, background:'#f6f9fc', border:'1px solid #e3e8ee' }}>
+        <span style={{ fontFamily:'monospace', fontWeight:800, fontSize:14, color:'var(--orange)', letterSpacing:'.5px' }}>
+          {selected.car_plate}
+        </span>
+        <span style={{ fontSize:12, color:'#0d253d', fontWeight:600 }}>· {selected.customer_name}</span>
+        {(selected.car_make || selected.car_model) && (
+          <span style={{ fontSize:11, color:'#64748d' }}>{selected.car_make} {selected.car_model}</span>
+        )}
+        <button
+          type="button"
+          onClick={onClear}
+          style={{ marginLeft:'auto', background:'none', border:'none', cursor:'pointer', color:'#64748d', fontSize:16, lineHeight:1, padding:'0 2px' }}
+        >×</button>
+      </div>
+    )
+  }
+
+  return (
+    <div ref={containerRef} style={{ position:'relative' }}>
+      <input
+        value={query}
+        onChange={e => { setQuery(e.target.value); setOpen(true) }}
+        onFocus={() => query && setOpen(true)}
+        placeholder="Search 搜索车牌 / 客户名…"
+        autoFocus
+        style={{ width:'100%', boxSizing:'border-box' }}
+      />
+      {searching && (
+        <div style={{ position:'absolute', right:10, top:'50%', transform:'translateY(-50%)' }}>
+          <div style={{ width:12, height:12, border:'2px solid var(--orange)', borderTopColor:'transparent', borderRadius:'50%', animation:'spin .6s linear infinite' }} />
+        </div>
+      )}
+      {open && query.trim() && (
+        <div style={{
+          position:'absolute', top:'calc(100% + 4px)', left:0, right:0, zIndex:200,
+          background:'#fff', borderRadius:10, border:'1px solid #e3e8ee',
+          boxShadow:'rgba(0,55,112,0.08) 0 8px 24px, rgba(0,55,112,0.04) 0 2px 6px',
+          overflow:'hidden', maxHeight:260, overflowY:'auto',
+        }}>
+          {items.map((item, i) => {
+            if (item.type === 'group') {
+              return (
+                <div key={`g-${i}`} style={{ padding:'6px 12px 2px', fontSize:10, fontWeight:700, textTransform:'uppercase', letterSpacing:'.5px', color:'#64748d', background:'#f6f9fc' }}>
+                  {item.customer_name}
+                </div>
+              )
+            }
+            return (
+              <div
+                key={item.vehicleId}
+                onMouseDown={e => { e.preventDefault(); onSelect(item); setOpen(false); setQuery('') }}
+                style={{ padding:'9px 14px', cursor:'pointer', borderTop: i > 0 && items[i-1].type !== 'group' ? '1px solid #f0f2f5' : 'none' }}
+                onMouseEnter={e => e.currentTarget.style.background = '#f6f9fc'}
+                onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+              >
+                <div style={{ display:'flex', alignItems:'baseline', gap:8 }}>
+                  <span style={{ fontFamily:'monospace', fontWeight:800, fontSize:13, color:'var(--orange)', letterSpacing:'.5px' }}>{item.car_plate}</span>
+                  <span style={{ fontSize:13, color:'#0d253d', fontWeight:600 }}>{item.customer_name}</span>
+                </div>
+                {(item.car_make || item.car_model) && (
+                  <div style={{ fontSize:11, color:'#64748d', marginTop:1 }}>{item.car_make} {item.car_model}</div>
+                )}
+              </div>
+            )
+          })}
+          {noResults && (
+            <div style={{ padding:'10px 14px' }}>
+              <div style={{ fontSize:12, color:'#64748d', marginBottom:8 }}>No results found 没有找到</div>
+              <button
+                type="button"
+                onMouseDown={e => { e.preventDefault(); onCreateNew(query.trim()); setOpen(false) }}
+                style={{ fontSize:12, fontWeight:600, color:'var(--orange)', background:'none', border:'1px solid var(--orange)', borderRadius:9999, padding:'4px 12px', cursor:'pointer' }}
+              >+ Create new 新建客户</button>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── New Job Modal ────────────────────────────────────────────────────────────
 function NewJobModal({ onClose, onSave }) {
+  const [selected, setSelected] = useState(null)   // VehicleSearchBox result
+  const [isNew, setIsNew]       = useState(false)
+  const [newPlate, setNewPlate] = useState('')
+  const [newName, setNewName]   = useState('')
+  const [newMake, setNewMake]   = useState('')
+  const [newModel, setNewModel] = useState('')
   const [form, setForm] = useState({
-    car_plate:       '',
-    customer_name:   '',
-    car_make:        '',
-    car_model:       '',
     advisor:         '',
     mechanic:        '',
     mileage:         '',
     job_description: '',
     initial_status:  'waiting',
   })
-  const [lookup, setLookup]       = useState(null) // null | {found,vehicle,customer} | {found:false}
-  const [lookingUp, setLookingUp] = useState(false)
-  const [saving, setSaving]       = useState(false)
+  const [saving, setSaving] = useState(false)
   const set = (k) => (e) => setForm(f => ({ ...f, [k]: e.target.value }))
 
-  // Debounced plate lookup
-  useEffect(() => {
-    const plate = form.car_plate.trim().toUpperCase()
-    if (plate.length < 3) { setLookup(null); return }
-    const t = setTimeout(async () => {
-      setLookingUp(true)
-      const { data } = await getCustomerByVehiclePlate(plate)
-      if (data) {
-        setLookup({ found: true, vehicle: data, customer: data.customers })
-        setForm(f => ({
-          ...f,
-          customer_name: data.customers?.name || f.customer_name,
-          car_make:      data.car_make        || f.car_make,
-          car_model:     data.car_model       || f.car_model,
-        }))
-      } else {
-        setLookup({ found: false })
-      }
-      setLookingUp(false)
-    }, 400)
-    return () => clearTimeout(t)
-  }, [form.car_plate])
+  const handleCreateNew = (q) => {
+    setIsNew(true)
+    // Pre-fill plate if query looks like a plate (alphanumeric, no spaces)
+    if (/^[A-Za-z0-9]+$/.test(q)) setNewPlate(q.toUpperCase())
+    else setNewName(q)
+  }
 
   const save = async () => {
-    if (!form.car_plate.trim()) { alert('Car plate is required. 请输入车牌。'); return }
+    const plate = (selected?.car_plate || newPlate).trim().toUpperCase()
+    if (!plate) { alert('Car plate is required. 请输入车牌。'); return }
     setSaving(true)
     try {
-      let customerId = lookup?.found ? lookup.customer?.id ?? null : null
-      const plate = form.car_plate.trim().toUpperCase()
+      let customerId = selected?.customerId ?? null
+      let vehicleId  = selected?.vehicleId  ?? null
 
-      if (!customerId && form.customer_name.trim()) {
+      if (isNew) {
         const { data: cust } = await upsertCustomer({
-          name:      form.customer_name.trim(),
+          name:      newName.trim() || null,
           car_plate: plate,
-          car_make:  form.car_make.trim()  || null,
-          car_model: form.car_model.trim() || null,
+          car_make:  newMake.trim()  || null,
+          car_model: newModel.trim() || null,
         })
         if (cust?.id) {
-          await addVehicle({
+          customerId = cust.id
+          const { data: veh } = await addVehicle({
             customer_id: cust.id,
             car_plate:   plate,
-            car_make:    form.car_make.trim()  || null,
-            car_model:   form.car_model.trim() || null,
+            car_make:    newMake.trim()  || null,
+            car_model:   newModel.trim() || null,
             is_primary:  true,
           })
-          customerId = cust.id
+          vehicleId = veh?.id ?? null
         }
       }
 
-      const invNo  = await generateInvoiceNo()
-      const today  = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Singapore' })
+      const invNo = await generateInvoiceNo()
+      const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Singapore' })
 
       await createInvoice({
         customer_id:     customerId,
+        vehicle_id:      vehicleId,
         invoice_no:      invNo,
         date:            today,
         advisor:         form.advisor         || null,
@@ -105,9 +239,6 @@ function NewJobModal({ onClose, onSave }) {
     }
   }
 
-  const foundCustomer = lookup?.found && lookup.customer
-  const isNew = lookup?.found === false
-
   return (
     <div className="modal-bg show" onClick={e => e.target === e.currentTarget && onClose()}>
       <div className="modal" style={{ maxWidth: 520 }}>
@@ -119,74 +250,47 @@ function NewJobModal({ onClose, onSave }) {
         </div>
         <div className="modal-body">
 
-          {/* Car Plate + lookup */}
+          {/* Unified vehicle search */}
           <div className="form-row">
-            <label>Car Plate 车牌 *</label>
-            <input
-              value={form.car_plate}
-              onChange={set('car_plate')}
-              placeholder="e.g. SKA1234A"
-              style={{ textTransform:'uppercase', fontFamily:'monospace', fontWeight:700, fontSize:15, letterSpacing:'.5px' }}
-              autoFocus
+            <label>Search 搜索车牌 / 客户名 *</label>
+            <VehicleSearchBox
+              selected={selected}
+              onSelect={v => { setSelected(v); setIsNew(false) }}
+              onClear={() => { setSelected(null); setIsNew(false) }}
+              onCreateNew={handleCreateNew}
             />
           </div>
 
-          {/* Lookup status chip */}
-          {(lookingUp || lookup) && (
-            <div style={{
-              marginBottom: 12, padding: '8px 12px', borderRadius: 8, fontSize: 12,
-              background: lookingUp ? '#f6f9fc'
-                : foundCustomer ? '#eaf3de'
-                : '#fff8f0',
-              color: lookingUp ? '#64748d'
-                : foundCustomer ? '#1a7f37'
-                : 'var(--orange)',
-              border: `1px solid ${lookingUp ? '#e3e8ee' : foundCustomer ? '#b8e0c2' : '#ffe0c0'}`,
-              display: 'flex', alignItems: 'center', gap: 6,
-            }}>
-              {lookingUp && <div style={{ width:12, height:12, border:'2px solid currentColor', borderTopColor:'transparent', borderRadius:'50%', animation:'spin .6s linear infinite', flexShrink:0 }} />}
-              {!lookingUp && foundCustomer && (
-                <>
-                  <CheckCircle2 size={13} />
-                  <span><strong>{foundCustomer.name}</strong>
-                    {(lookup.vehicle.car_make || lookup.vehicle.car_model) && ` · ${[lookup.vehicle.car_make, lookup.vehicle.car_model].filter(Boolean).join(' ')}`}
-                    {lookup.vehicle.car_year && ` ${lookup.vehicle.car_year}`}
-                  </span>
-                </>
-              )}
-              {!lookingUp && isNew && (
-                <>
-                  <Plus size={13} />
-                  <span>New customer — fill in details below 新客户，请填写信息</span>
-                </>
-              )}
-              {lookingUp && <span>Looking up plate...</span>}
+          {/* New customer fields */}
+          {isNew && (
+            <div style={{ background:'#fff8f0', border:'1px solid #ffe0c0', borderRadius:10, padding:'12px 14px', marginBottom:12 }}>
+              <div style={{ fontSize:11, fontWeight:700, color:'var(--orange)', marginBottom:10, display:'flex', alignItems:'center', gap:5 }}>
+                <Plus size={11} /> New customer 新客户
+              </div>
+              <div className="form-grid">
+                <div className="form-row">
+                  <label>Car Plate 车牌 *</label>
+                  <input value={newPlate} onChange={e => setNewPlate(e.target.value.toUpperCase())}
+                    placeholder="e.g. SKA1234A"
+                    style={{ fontFamily:'monospace', fontWeight:700, letterSpacing:'.5px' }} />
+                </div>
+                <div className="form-row">
+                  <label>Customer Name 客户名</label>
+                  <input value={newName} onChange={e => setNewName(e.target.value)} placeholder="e.g. Tan Wei Ming" />
+                </div>
+                <div className="form-row">
+                  <label>Make 品牌</label>
+                  <input value={newMake} onChange={e => setNewMake(e.target.value)} placeholder="e.g. Toyota" />
+                </div>
+                <div className="form-row">
+                  <label>Model 型号</label>
+                  <input value={newModel} onChange={e => setNewModel(e.target.value)} placeholder="e.g. Wish" />
+                </div>
+              </div>
             </div>
           )}
 
           <div className="form-grid">
-            <div className="form-row" style={{ gridColumn: '1 / -1' }}>
-              <label>Customer Name 客户名</label>
-              <input
-                value={form.customer_name}
-                onChange={set('customer_name')}
-                placeholder={foundCustomer ? foundCustomer.name : 'e.g. Tan Wei Ming'}
-                readOnly={!!foundCustomer}
-                style={{ background: foundCustomer ? '#f6f9fc' : undefined, color: foundCustomer ? '#64748d' : undefined }}
-              />
-            </div>
-            <div className="form-row">
-              <label>Make 品牌</label>
-              <input value={form.car_make} onChange={set('car_make')} placeholder="e.g. Toyota"
-                readOnly={!!foundCustomer && !!form.car_make}
-                style={{ background: (foundCustomer && form.car_make) ? '#f6f9fc' : undefined, color: (foundCustomer && form.car_make) ? '#64748d' : undefined }} />
-            </div>
-            <div className="form-row">
-              <label>Model 型号</label>
-              <input value={form.car_model} onChange={set('car_model')} placeholder="e.g. Wish"
-                readOnly={!!foundCustomer && !!form.car_model}
-                style={{ background: (foundCustomer && form.car_model) ? '#f6f9fc' : undefined, color: (foundCustomer && form.car_model) ? '#64748d' : undefined }} />
-            </div>
             <div className="form-row">
               <label>Advisor 顾问</label>
               <select value={form.advisor} onChange={set('advisor')}>

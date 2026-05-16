@@ -144,6 +144,20 @@ export const deleteCatalogItem = (id) =>
   supabase.from('service_catalog').delete().eq('id', id)
 
 // ── Vehicles ───────────────────────────────────────────
+export const searchVehiclesAndCustomers = async (query) => {
+  const [vehicleRes, customerRes] = await Promise.all([
+    supabase.from('vehicles')
+      .select('id, car_plate, car_make, car_model, customer_id, customers(id, name)')
+      .ilike('car_plate', `%${query}%`)
+      .limit(5),
+    supabase.from('customers')
+      .select('id, name, vehicles(id, car_plate, car_make, car_model, is_primary)')
+      .ilike('name', `%${query}%`)
+      .limit(5),
+  ])
+  return { vehicles: vehicleRes.data || [], customers: customerRes.data || [] }
+}
+
 export const getCustomerByVehiclePlate = (plate) =>
   supabase.from('vehicles')
     .select('id, car_plate, car_make, car_model, car_year, customers(id, name, phone)')
