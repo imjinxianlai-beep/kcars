@@ -210,22 +210,41 @@ function GlobalSearch({ onClose, onNavigate }) {
   const search = useCallback(async (q) => {
     if (!q.trim()) { setResults(null); return }
     setLoading(true)
-    const [custRes, vehRes, invRes, itemRes] = await Promise.all([
+
+    // Multi-word: each token must appear in car_make or car_model (chained .or() = AND)
+    const tokens = q.trim().split(/\s+/).filter(Boolean)
+    let multiVehPromise = Promise.resolve({ data: [] })
+    if (tokens.length > 1) {
+      let mq = supabase.from('vehicles')
+        .select('id, car_plate, car_make, car_model, car_year, is_primary, customer_id, customers(id, name, phone)')
+      tokens.forEach(t => { mq = mq.or(`car_make.ilike.%${t}%,car_model.ilike.%${t}%`) })
+      multiVehPromise = mq.limit(8)
+    }
+
+    const [custRes, vehRes, vehMultiRes, invRes, itemRes] = await Promise.all([
       supabase.from('customers').select('id, name, phone')
         .ilike('name', `%${q}%`).limit(5),
       supabase.from('vehicles')
         .select('id, car_plate, car_make, car_model, car_year, is_primary, customer_id, customers(id, name, phone)')
         .or(`car_plate.ilike.%${q}%,car_make.ilike.%${q}%,car_model.ilike.%${q}%`)
         .limit(8),
+      multiVehPromise,
       supabase.from('invoices').select('id, invoice_no, date, total, customer_id, customers(name)')
         .ilike('invoice_no', `%${q}%`).limit(5),
       supabase.from('invoice_items').select('id, description, invoice_id, invoices(invoice_no, customer_id, customers(name))')
         .ilike('description', `%${q}%`).limit(5),
     ])
+
+    // Merge single-word and multi-word vehicle results, deduplicate by id
+    const vehMap = new Map()
+    for (const v of [...(vehRes.data || []), ...(vehMultiRes.data || [])]) {
+      if (!vehMap.has(v.id)) vehMap.set(v.id, v)
+    }
+
     const custIds = new Set((custRes.data || []).map(c => c.id))
     setResults({
       customers: custRes.data || [],
-      vehicles:  (vehRes.data || []).filter(v => !custIds.has(v.customer_id)),
+      vehicles:  [...vehMap.values()].filter(v => !custIds.has(v.customer_id)).slice(0, 8),
       invoices:  invRes.data  || [],
       items:     itemRes.data || [],
     })

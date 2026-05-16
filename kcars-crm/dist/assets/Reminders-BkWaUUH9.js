@@ -1,4 +1,4 @@
-import{r as l,s as re,X as de,a2 as X,M as k,A as w,C as ce,a3 as pe,x as J,j as t,a4 as ue,a5 as fe}from"./index-u_2mSLi7.js";const ge=180,q=7,xe=(i,d,x,y=!1)=>y?`Hi ${i}, this is K-Cars Auto Centre.
+import{r as l,s as re,X as de,a2 as X,M as k,A as w,C as ce,a3 as pe,x as J,j as t,a4 as ue,a5 as fe}from"./index-DQYCzRXY.js";const ge=180,q=7,xe=(i,d,x,y=!1)=>y?`Hi ${i}, this is K-Cars Auto Centre.
 
 Your vehicle ${d} was due for servicing on ${x}.
 
