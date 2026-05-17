@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { supabase, createInvoice, generateInvoiceNo, searchVehiclesAndCustomers, upsertCustomer, addVehicle } from '../lib/supabase'
+import { supabase, createInvoice, generateInvoiceNo, searchVehiclesAndCustomers, upsertCustomer, addVehicle, getVehicleMakes, getVehicleModels } from '../lib/supabase'
 import { Clock, Wrench, Package, CheckCircle2, CircleDollarSign, Columns3, RefreshCw, Plus } from 'lucide-react'
 
 const COLUMNS = [
@@ -13,12 +13,13 @@ const COLUMNS = [
 const ADVISORS  = ['JON', 'JIMMY', 'MENG', 'IVY', 'NORMAN', 'XIN', 'ZHU', 'TAO', 'XIONG']
 const MECHANICS = ['NORMAN', 'XIN', 'ZHU', 'TAO', 'XIONG', 'MENG']
 
+const toTitleCase = (s) => s.replace(/\b\w/g, c => c.toUpperCase())
+
 // ── Helpers ──────────────────────────────────────────────────────────────────
 function mergeSearchResults({ vehicles, customers }) {
   const seenIds = new Set()
   const items = []
   for (const v of vehicles) {
-    if (items.filter(i => i.type === 'vehicle').length >= 8) break
     if (seenIds.has(v.id)) continue
     seenIds.add(v.id)
     items.push({
@@ -34,7 +35,6 @@ function mergeSearchResults({ vehicles, customers }) {
     if (!cvs.length) continue
     if (cvs.length > 1) items.push({ type: 'group', customer_name: c.name })
     for (const v of cvs) {
-      if (items.filter(i => i.type === 'vehicle').length >= 8) break
       seenIds.add(v.id)
       items.push({
         type: 'vehicle', vehicleId: v.id, customerId: c.id,
@@ -46,17 +46,75 @@ function mergeSearchResults({ vehicles, customers }) {
   return items
 }
 
+// ── ComboBox ─────────────────────────────────────────────────────────────────
+function ComboBox({ value, onChange, suggestions, placeholder, transform, disabled }) {
+  const [input, setInput]   = useState(value)
+  const [open, setOpen]     = useState(false)
+  const containerRef        = useRef(null)
+
+  // Sync when parent resets value
+  useEffect(() => { setInput(value) }, [value])
+
+  useEffect(() => {
+    const handler = (e) => { if (!containerRef.current?.contains(e.target)) setOpen(false) }
+    document.addEventListener('mousedown', handler)
+    return () => document.removeEventListener('mousedown', handler)
+  }, [])
+
+  const filtered = suggestions.filter(s => s.toLowerCase().includes(input.toLowerCase()))
+
+  const commit = (val) => {
+    const out = transform ? transform(val) : val
+    setInput(out)
+    onChange(out)
+    setOpen(false)
+  }
+
+  return (
+    <div ref={containerRef} style={{ position:'relative' }}>
+      <input
+        value={input}
+        disabled={disabled}
+        placeholder={placeholder}
+        onChange={e => { setInput(e.target.value); setOpen(true) }}
+        onFocus={() => setOpen(true)}
+        onBlur={() => { if (transform && input) { const out = transform(input); setInput(out); onChange(out) } }}
+        style={{ width:'100%', boxSizing:'border-box' }}
+      />
+      {open && filtered.length > 0 && (
+        <div style={{
+          position:'absolute', top:'calc(100% + 2px)', left:0, right:0, zIndex:300,
+          background:'#fff', borderRadius:8, border:'1px solid #e3e8ee',
+          boxShadow:'rgba(0,55,112,0.08) 0 8px 24px, rgba(0,55,112,0.04) 0 2px 6px',
+          maxHeight:200, overflowY:'auto',
+        }}>
+          {filtered.map(s => (
+            <div
+              key={s}
+              onMouseDown={e => { e.preventDefault(); commit(s) }}
+              style={{ padding:'8px 12px', fontSize:13, cursor:'pointer', color:'#0d253d' }}
+              onMouseEnter={e => e.currentTarget.style.background = '#f6f9fc'}
+              onMouseLeave={e => e.currentTarget.style.background = 'transparent'}
+            >{s}</div>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
 // ── Vehicle Search Box ────────────────────────────────────────────────────────
 function VehicleSearchBox({ selected, onSelect, onClear, onCreateNew }) {
   const [query, setQuery]           = useState('')
   const [rawResults, setRawResults] = useState(null)
   const [searching, setSearching]   = useState(false)
   const [open, setOpen]             = useState(false)
+  const [focused, setFocused]       = useState(false)
   const containerRef                = useRef(null)
 
   // Debounced search
   useEffect(() => {
-    if (!query.trim()) { setRawResults(null); return }
+    if (!query.trim()) { setRawResults(null); setOpen(false); return }
     const t = setTimeout(async () => {
       setSearching(true)
       const res = await searchVehiclesAndCustomers(query.trim())
@@ -69,13 +127,16 @@ function VehicleSearchBox({ selected, onSelect, onClear, onCreateNew }) {
 
   // Close on outside click
   useEffect(() => {
-    const handler = (e) => { if (!containerRef.current?.contains(e.target)) setOpen(false) }
+    const handler = (e) => {
+      if (!containerRef.current?.contains(e.target)) { setOpen(false); setFocused(false) }
+    }
     document.addEventListener('mousedown', handler)
     return () => document.removeEventListener('mousedown', handler)
   }, [])
 
   const items = rawResults ? mergeSearchResults(rawResults) : []
   const noResults = rawResults && items.filter(i => i.type === 'vehicle').length === 0
+  const showHint = focused && (!query.trim() || searching)
 
   if (selected) {
     return (
@@ -101,7 +162,8 @@ function VehicleSearchBox({ selected, onSelect, onClear, onCreateNew }) {
       <input
         value={query}
         onChange={e => { setQuery(e.target.value); setOpen(true) }}
-        onFocus={() => query && setOpen(true)}
+        onFocus={() => setFocused(true)}
+        onBlur={() => setFocused(false)}
         placeholder="Search 搜索车牌 / 客户名…"
         autoFocus
         style={{ width:'100%', boxSizing:'border-box' }}
@@ -111,12 +173,25 @@ function VehicleSearchBox({ selected, onSelect, onClear, onCreateNew }) {
           <div style={{ width:12, height:12, border:'2px solid var(--orange)', borderTopColor:'transparent', borderRadius:'50%', animation:'spin .6s linear infinite' }} />
         </div>
       )}
+      {showHint && (
+        <div style={{
+          position:'absolute', top:'calc(100% + 4px)', left:0, right:0, zIndex:200,
+          background:'#fff', borderRadius:10, border:'1px solid #e3e8ee',
+          boxShadow:'rgba(0,55,112,0.08) 0 8px 24px, rgba(0,55,112,0.04) 0 2px 6px',
+          padding:'10px 14px',
+        }}>
+          <div style={{ fontSize:11, color:'#94a3b8', lineHeight:1.6 }}>
+            搜索车牌号、客户名，或两者结合缩小范围<br />
+            <span style={{ color:'#b0bec5' }}>e.g. "matin 3799" · "toyota wish" · "SKA123"</span>
+          </div>
+        </div>
+      )}
       {open && query.trim() && (
         <div style={{
           position:'absolute', top:'calc(100% + 4px)', left:0, right:0, zIndex:200,
           background:'#fff', borderRadius:10, border:'1px solid #e3e8ee',
           boxShadow:'rgba(0,55,112,0.08) 0 8px 24px, rgba(0,55,112,0.04) 0 2px 6px',
-          overflow:'hidden', maxHeight:260, overflowY:'auto',
+          maxHeight:320, overflowY:'auto',
         }}>
           {items.map((item, i) => {
             if (item.type === 'group') {
@@ -162,12 +237,14 @@ function VehicleSearchBox({ selected, onSelect, onClear, onCreateNew }) {
 
 // ── New Job Modal ────────────────────────────────────────────────────────────
 function NewJobModal({ onClose, onSave }) {
-  const [selected, setSelected] = useState(null)   // VehicleSearchBox result
+  const [selected, setSelected] = useState(null)
   const [isNew, setIsNew]       = useState(false)
   const [newPlate, setNewPlate] = useState('')
   const [newName, setNewName]   = useState('')
   const [newMake, setNewMake]   = useState('')
   const [newModel, setNewModel] = useState('')
+  const [makeSugs, setMakeSugs] = useState([])
+  const [modelSugs, setModelSugs] = useState([])
   const [form, setForm] = useState({
     advisor:         '',
     mechanic:        '',
@@ -177,6 +254,25 @@ function NewJobModal({ onClose, onSave }) {
   })
   const [saving, setSaving] = useState(false)
   const set = (k) => (e) => setForm(f => ({ ...f, [k]: e.target.value }))
+
+  // Load makes once when new-customer panel opens
+  useEffect(() => {
+    if (!isNew) return
+    getVehicleMakes().then(({ data }) => {
+      if (data) setMakeSugs([...new Set(data.map(r => r.car_make).filter(Boolean))].sort())
+    })
+  }, [isNew])
+
+  // Reload models when make changes
+  useEffect(() => {
+    if (!newMake.trim()) { setModelSugs([]); return }
+    const t = setTimeout(() => {
+      getVehicleModels(newMake.trim()).then(({ data }) => {
+        if (data) setModelSugs([...new Set(data.map(r => r.car_model).filter(Boolean))].sort())
+      })
+    }, 300)
+    return () => clearTimeout(t)
+  }, [newMake])
 
   const handleCreateNew = (q) => {
     setIsNew(true)
@@ -280,11 +376,24 @@ function NewJobModal({ onClose, onSave }) {
                 </div>
                 <div className="form-row">
                   <label>Make 品牌</label>
-                  <input value={newMake} onChange={e => setNewMake(e.target.value)} placeholder="e.g. Toyota" />
+                  <ComboBox
+                    value={newMake}
+                    onChange={v => { setNewMake(v); setNewModel('') }}
+                    suggestions={makeSugs}
+                    placeholder="e.g. Toyota"
+                    transform={toTitleCase}
+                  />
                 </div>
                 <div className="form-row">
                   <label>Model 型号</label>
-                  <input value={newModel} onChange={e => setNewModel(e.target.value)} placeholder="e.g. Wish" />
+                  <ComboBox
+                    value={newModel}
+                    onChange={setNewModel}
+                    suggestions={modelSugs}
+                    placeholder="e.g. WISH"
+                    transform={s => s.toUpperCase()}
+                    disabled={!newMake.trim()}
+                  />
                 </div>
               </div>
             </div>

@@ -149,11 +149,11 @@ export const searchVehiclesAndCustomers = async (query) => {
     supabase.from('vehicles')
       .select('id, car_plate, car_make, car_model, customer_id, customers(id, name)')
       .ilike('car_plate', `%${query}%`)
-      .limit(5),
+      .limit(50),
     supabase.from('customers')
       .select('id, name, vehicles(id, car_plate, car_make, car_model, is_primary)')
       .ilike('name', `%${query}%`)
-      .limit(5),
+      .limit(20),
   ])
   return { vehicles: vehicleRes.data || [], customers: customerRes.data || [] }
 }
