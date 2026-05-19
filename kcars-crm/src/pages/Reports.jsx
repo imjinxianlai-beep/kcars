@@ -7,7 +7,7 @@ export default function Reports() {
   const [loading, setLoading] = useState(false)
 
   return (
-    <div style={{ flex:1, overflow:'auto', background:'var(--bg)' }}>
+    <div style={{ height:'100%', overflow:'auto', background:'var(--bg)' }}>
       {/* Tab switcher */}
       <div style={{ background:'var(--card)', borderBottom:'1px solid var(--border)', padding:'0 20px', display:'flex', gap:4 }}>
         {[
