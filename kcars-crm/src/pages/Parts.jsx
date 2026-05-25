@@ -32,13 +32,15 @@ function BackBtn({ label, onClick }) {
         background: 'none',
         border: 'none',
         cursor: 'pointer',
-        fontSize: 14,
-        fontWeight: 500,
-        color: '#0d253d',
-        padding: '0 12px 0 0',
-        fontFamily: 'inherit',
+        fontSize: 17,
+        fontWeight: 400,
+        color: 'var(--orange)',
+        padding: 0,
+        fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", system-ui, sans-serif',
         flexShrink: 0,
         whiteSpace: 'nowrap',
+        letterSpacing: '-0.374px',
+        lineHeight: 1,
       }}
     >
       {'‹ '}{label}
@@ -48,45 +50,78 @@ function BackBtn({ label, onClick }) {
 
 // ── StepHeader ────────────────────────────────────────────────────────────────
 
-function StepHeader({ title, subtitle, backLabel, onBack, onAdd }) {
+function StepHeader({ title, backLabel, onBack, onAdd }) {
   return (
     <div style={{
       position: 'sticky',
       top: 0,
       zIndex: 10,
-      background: '#fff',
-      borderBottom: '1px solid #e3e8ee',
-      padding: '14px 20px 12px',
-      boxShadow: 'rgba(0,55,112,0.06) 0 2px 8px',
+      background: 'rgba(245,245,247,0.85)',
+      backdropFilter: 'saturate(180%) blur(20px)',
+      WebkitBackdropFilter: 'saturate(180%) blur(20px)',
+      borderBottom: '1px solid #e0e0e0',
+      minHeight: 44,
+      padding: '0 16px',
+      display: 'flex',
+      alignItems: 'center',
     }}>
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 0, minWidth: 0 }}>
-          {backLabel && onBack && (
-            <BackBtn label={backLabel} onClick={onBack} />
-          )}
-          <div style={{ minWidth: 0 }}>
-            <div style={{
-              fontSize: 17,
-              fontWeight: 800,
-              color: '#0d253d',
-              letterSpacing: '-0.3px',
-              whiteSpace: 'nowrap',
-              overflow: 'hidden',
-              textOverflow: 'ellipsis',
-            }}>
-              {title}
-            </div>
-            <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>{subtitle}</div>
-          </div>
-        </div>
+      {/* Left — back button */}
+      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'flex-start' }}>
+        {backLabel && onBack && (
+          <BackBtn label={backLabel} onClick={onBack} />
+        )}
+      </div>
+
+      {/* Center — title */}
+      <div style={{
+        fontSize: 17,
+        fontWeight: 600,
+        color: '#1d1d1f',
+        letterSpacing: '-0.374px',
+        fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", system-ui, sans-serif',
+        whiteSpace: 'nowrap',
+        overflow: 'hidden',
+        textOverflow: 'ellipsis',
+        maxWidth: '40%',
+        textAlign: 'center',
+      }}>
+        {title}
+      </div>
+
+      {/* Right — add button */}
+      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}>
         <button
           className="btn btn-primary"
           onClick={onAdd}
-          style={{ display: 'flex', alignItems: 'center', gap: 5, fontSize: 12, padding: '7px 14px', flexShrink: 0 }}
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: 4,
+            fontSize: 13,
+            padding: '6px 12px',
+            flexShrink: 0,
+          }}
         >
-          <Plus size={13} /> Add Part
+          <Plus size={12} /> Add Part
         </button>
       </div>
+    </div>
+  )
+}
+
+// ── PageSubtitle ──────────────────────────────────────────────────────────────
+
+function PageSubtitle({ text }) {
+  if (!text) return null
+  return (
+    <div style={{
+      fontSize: 13,
+      color: '#6e6e73',
+      padding: '12px 32px 4px',
+      letterSpacing: '-0.08px',
+      fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", system-ui, sans-serif',
+    }}>
+      {text}
     </div>
   )
 }
@@ -96,12 +131,11 @@ function StepHeader({ title, subtitle, backLabel, onBack, onAdd }) {
 function ListCard({ children }) {
   return (
     <div style={{
-      background: '#fff',
-      borderRadius: 12,
-      border: '1px solid #e3e8ee',
+      background: '#ffffff',
+      borderRadius: 18,
+      border: '1px solid #e0e0e0',
       overflow: 'hidden',
-      margin: '16px 20px',
-      boxShadow: 'rgba(0,55,112,0.08) 0 1px 3px',
+      margin: '0 16px 24px',
     }}>
       {children}
     </div>
@@ -121,52 +155,88 @@ function ListRow({ primary, secondary, badge, chevron, price, onClick }) {
       style={{
         display: 'flex',
         alignItems: 'center',
-        padding: '14px 16px',
-        background: hovered ? '#f6f9fc' : 'transparent',
+        padding: '12px 16px',
+        minHeight: 44,
+        background: hovered ? '#f5f5f7' : '#ffffff',
         cursor: onClick ? 'pointer' : 'default',
         transition: 'background 0.1s',
+        fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", system-ui, sans-serif',
       }}
     >
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 15, fontWeight: 600, color: '#0d253d', lineHeight: 1.3 }}>
+        <div style={{
+          fontSize: 17,
+          fontWeight: 400,
+          color: '#1d1d1f',
+          letterSpacing: '-0.374px',
+          lineHeight: 1.35,
+        }}>
           {primary}
         </div>
         {secondary && (
-          <div style={{ fontSize: 12, color: '#94a3b8', marginTop: 3 }}>{secondary}</div>
+          <div style={{
+            fontSize: 14,
+            fontWeight: 400,
+            color: '#6e6e73',
+            letterSpacing: '-0.224px',
+            marginTop: 2,
+            lineHeight: 1.3,
+          }}>
+            {secondary}
+          </div>
         )}
       </div>
 
       {badge != null && (
         <span style={{
-          fontSize: 11,
+          fontSize: 13,
           fontWeight: 600,
-          padding: '1px 8px',
+          padding: '1px 7px',
           borderRadius: 9999,
-          background: '#e3e8ee',
-          color: '#64748d',
-          marginLeft: 10,
+          background: 'rgba(210,210,215,0.64)',
+          color: '#1d1d1f',
+          marginLeft: 8,
           flexShrink: 0,
+          fontFamily: 'inherit',
         }}>
           {badge}
         </span>
       )}
 
       {price != null && (
-        <span style={{
-          fontSize: 15,
-          fontWeight: 700,
-          color: price === 'TBC' ? '#94a3b8' : 'var(--orange)',
-          fontFeatureSettings: '"tnum"',
-          letterSpacing: '-0.4px',
-          marginLeft: 12,
-          flexShrink: 0,
-        }}>
-          {price}
-        </span>
+        price === 'TBC' ? (
+          <span style={{
+            fontSize: 14,
+            fontWeight: 400,
+            color: '#6e6e73',
+            marginLeft: 12,
+            flexShrink: 0,
+          }}>
+            TBC
+          </span>
+        ) : (
+          <span style={{
+            fontSize: 17,
+            fontWeight: 600,
+            color: 'var(--orange)',
+            fontFeatureSettings: '"tnum"',
+            letterSpacing: '-0.374px',
+            marginLeft: 12,
+            flexShrink: 0,
+          }}>
+            {price}
+          </span>
+        )
       )}
 
       {chevron && (
-        <span style={{ color: '#94a3b8', fontSize: 18, marginLeft: 10, flexShrink: 0, lineHeight: 1 }}>
+        <span style={{
+          color: '#c7c7cc',
+          fontSize: 20,
+          marginLeft: 8,
+          flexShrink: 0,
+          lineHeight: 1,
+        }}>
           ›
         </span>
       )}
@@ -188,7 +258,14 @@ function LoadingView() {
 
 function EmptyView({ message }) {
   return (
-    <div style={{ textAlign: 'center', padding: '56px 24px', color: '#94a3b8', fontSize: 14 }}>
+    <div style={{
+      textAlign: 'center',
+      padding: '56px 24px',
+      color: '#6e6e73',
+      fontSize: 14,
+      fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", system-ui, sans-serif',
+      letterSpacing: '-0.224px',
+    }}>
       {message || 'No data found'}
     </div>
   )
@@ -225,28 +302,37 @@ function PartModal({ part, mode, makes, onClose, onSave, saving }) {
     width: '100%',
     boxSizing: 'border-box',
     padding: '9px 12px',
-    border: '1px solid #a8c3de',
-    borderRadius: 6,
-    fontSize: 14,
-    color: '#0d253d',
+    border: '1px solid #e0e0e0',
+    borderRadius: 10,
+    fontSize: 15,
+    color: '#1d1d1f',
     outline: 'none',
-    background: '#fff',
-    fontFamily: 'inherit',
+    background: '#ffffff',
+    fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", system-ui, sans-serif',
+    letterSpacing: '-0.224px',
   }
 
   const labelStyle = {
-    fontSize: 12,
-    fontWeight: 600,
-    color: '#64748d',
+    fontSize: 13,
+    fontWeight: 400,
+    color: '#6e6e73',
+    letterSpacing: '-0.08px',
     marginBottom: 5,
     display: 'block',
+    fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", system-ui, sans-serif',
   }
 
   return (
     <div className="modal-bg show" onClick={e => e.target === e.currentTarget && onClose()}>
       <div className="modal" style={{ maxWidth: 500 }}>
         <div className="modal-head">
-          <h3 style={{ fontSize: 15, fontWeight: 700, color: '#0d253d' }}>
+          <h3 style={{
+            fontSize: 17,
+            fontWeight: 600,
+            color: '#1d1d1f',
+            letterSpacing: '-0.374px',
+            fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", system-ui, sans-serif',
+          }}>
             {mode === 'add' ? 'Add Part' : 'Edit Part'}
           </h3>
           <button className="modal-close" onClick={onClose}>×</button>
@@ -356,9 +442,9 @@ function PartModal({ part, mode, makes, onClose, onSave, saving }) {
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 export default function Parts() {
-  const [step, setStep]                       = useState(1)
-  const [selectedMake, setSelectedMake]       = useState(null)
-  const [selectedVehicle, setSelectedVehicle] = useState(null)
+  const [step, setStep]                         = useState(1)
+  const [selectedMake, setSelectedMake]         = useState(null)
+  const [selectedVehicle, setSelectedVehicle]   = useState(null)
   const [selectedCategory, setSelectedCategory] = useState(null)
 
   const [brands, setBrands]         = useState([])
@@ -501,28 +587,31 @@ export default function Parts() {
     return { title: selectedCategory, subtitle: `${selectedMake} · ${selectedVehicle}`, backLabel: selectedVehicle, onBack: goToStep3 }
   })()
 
-  // Makes list for modal (brands already loaded from step 1)
-  const makesForModal = brands.length > 0
-    ? brands
-    : []
+  const makesForModal = brands.length > 0 ? brands : []
 
   return (
-    <div style={{ background: '#f6f9fc', height: '100%', overflow: 'auto' }}>
+    <div style={{
+      background: '#f5f5f7',
+      height: '100%',
+      overflow: 'auto',
+      fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", system-ui, sans-serif',
+    }}>
 
       <StepHeader
         title={headerProps.title}
-        subtitle={headerProps.subtitle}
         backLabel={headerProps.backLabel}
         onBack={headerProps.onBack}
         onAdd={() => setModal({ mode: 'add', part: null })}
       />
+
+      <PageSubtitle text={headerProps.subtitle} />
 
       {/* Step 1 — Brands */}
       {step === 1 && (
         loading ? <LoadingView /> : brands.length === 0 ? <EmptyView message="No brands found" /> : (
           <ListCard>
             {brands.map((brand, i) => (
-              <div key={brand} style={{ borderBottom: i === brands.length - 1 ? 'none' : '1px solid #e3e8ee' }}>
+              <div key={brand} style={{ borderBottom: i < brands.length - 1 ? '1px solid #e0e0e0' : 'none' }}>
                 <ListRow
                   primary={brand}
                   chevron
@@ -539,7 +628,7 @@ export default function Parts() {
         loading ? <LoadingView /> : vehicles.length === 0 ? <EmptyView message="No vehicles found" /> : (
           <ListCard>
             {vehicles.map((vehicle, i) => (
-              <div key={vehicle} style={{ borderBottom: i === vehicles.length - 1 ? 'none' : '1px solid #e3e8ee' }}>
+              <div key={vehicle} style={{ borderBottom: i < vehicles.length - 1 ? '1px solid #e0e0e0' : 'none' }}>
                 <ListRow
                   primary={vehicle}
                   chevron
@@ -556,7 +645,7 @@ export default function Parts() {
         loading ? <LoadingView /> : categories.length === 0 ? <EmptyView message="No categories found" /> : (
           <ListCard>
             {categories.map((cat, i) => (
-              <div key={cat.name} style={{ borderBottom: i === categories.length - 1 ? 'none' : '1px solid #e3e8ee' }}>
+              <div key={cat.name} style={{ borderBottom: i < categories.length - 1 ? '1px solid #e0e0e0' : 'none' }}>
                 <ListRow
                   primary={cat.name}
                   badge={cat.count}
@@ -576,7 +665,7 @@ export default function Parts() {
             {parts.map((part, i) => {
               const priceStr = fmtPrice(part)
               return (
-                <div key={part.id} style={{ borderBottom: i === parts.length - 1 ? 'none' : '1px solid #e3e8ee' }}>
+                <div key={part.id} style={{ borderBottom: i < parts.length - 1 ? '1px solid #e0e0e0' : 'none' }}>
                   <ListRow
                     primary={part.part_name}
                     secondary={part.notes || null}
