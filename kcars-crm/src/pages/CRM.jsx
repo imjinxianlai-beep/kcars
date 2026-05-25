@@ -160,6 +160,11 @@ export default function CRM({ session, pendingCustomerId, onCustomerSelected }) 
     unpaid: invoices.filter(i => i.status !== 'paid').length,
   }
 
+  // Filter invoices by selected vehicle during render — no extra useEffect needed
+  const filteredInvoices = activeVehicle
+    ? invoices.filter(i => i.vehicle_id === activeVehicle.id)
+    : invoices
+
   const totalAllRev = customers.reduce((a) => a, 0)
 
   return (
@@ -376,10 +381,10 @@ export default function CRM({ session, pendingCustomerId, onCustomerSelected }) 
               {/* Invoice List */}
               <div className="section-title">
                 <span style={{ display:'flex', alignItems:'center', gap:5 }}><ClipboardList size={11} /> INVOICE HISTORY 发票记录</span>
-                <span style={{ fontWeight: 400, color: 'var(--text3)' }}>{invoices.length} records</span>
+                <span style={{ fontWeight: 400, color: 'var(--text3)' }}>{filteredInvoices.length} records</span>
               </div>
 
-              {invoices.map((inv, idx) => (
+              {filteredInvoices.map((inv, idx) => (
                 <InvoiceCard key={inv.id} inv={inv} open={openInv === idx}
                   onToggle={() => setOpenInv(openInv === idx ? null : idx)}
                   onEdit={() => { setEditingInvoice(inv); setModal('invoice') }}
