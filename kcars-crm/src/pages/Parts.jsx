@@ -14,15 +14,50 @@ const C = {
   steel:    '#787671',
   muted:    '#bbb8b1',
   primary:  '#5645d4',
+  error:    '#e03131',
 }
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 const BRAND_SHORTCUTS = ['Honda', 'Toyota', 'Nissan', 'Mitsubishi', 'Hyundai', 'Kia', 'BMW', 'Mercedes', 'Audi']
-const CATEGORY_ORDER  = ['Transmission', 'Engine', 'Air Con', 'Suspension', 'Brakes', 'Steering', 'Cooling', 'Electrical', 'Clutch', 'Others']
-const ALL_CATEGORIES  = ['Transmission', 'Engine', 'Air Con', 'Suspension', 'Brakes', 'Steering', 'Cooling', 'Electrical', 'Clutch', 'Drivetrain', 'Hybrid', 'Ignition', 'Mounting', 'Others', 'Service', 'Tyre', 'Wheel Bearing']
+
+const CATEGORY_OPTIONS = [
+  { value: 'transmission',  label: 'Transmission'  },
+  { value: 'engine',        label: 'Engine'        },
+  { value: 'aircon',        label: 'Air Con'       },
+  { value: 'suspension',    label: 'Suspension'    },
+  { value: 'brakes',        label: 'Brakes'        },
+  { value: 'steering',      label: 'Steering'      },
+  { value: 'cooling',       label: 'Cooling'       },
+  { value: 'electrical',    label: 'Electrical'    },
+  { value: 'clutch',        label: 'Clutch'        },
+  { value: 'drivetrain',    label: 'Drivetrain'    },
+  { value: 'hybrid',        label: 'Hybrid'        },
+  { value: 'ignition',      label: 'Ignition'      },
+  { value: 'mounting',      label: 'Mounting'      },
+  { value: 'others',        label: 'Others'        },
+  { value: 'service',       label: 'Service'       },
+  { value: 'tyre',          label: 'Tyre'          },
+  { value: 'wheel_bearing', label: 'Wheel Bearing' },
+]
+
+const CATEGORY_ORDER = ['transmission','engine','aircon','suspension','brakes','steering','cooling','electrical','clutch','others']
+
 const RECENT_KEY = 'kcars_parts_recent'
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+function getCategoryLabel(value) {
+  return CATEGORY_OPTIONS.find(c => c.value === value)?.label || value
+}
+
+function normCat(raw) {
+  if (!raw) return null
+  const byVal = CATEGORY_OPTIONS.find(c => c.value === raw)
+  if (byVal) return byVal.value
+  const byLbl = CATEGORY_OPTIONS.find(c => c.label.toLowerCase() === raw.toLowerCase())
+  if (byLbl) return byLbl.value
+  return raw
+}
+
 function dedupe(rows, key) {
   const seen = new Set()
   return (rows || []).reduce((acc, row) => {
@@ -59,6 +94,16 @@ function parseWarranty(notes) {
   if (/6\s*(个月|months?)/i.test(notes))  return 'Warranty 6 months'
   if (/3\s*(个月|months?)/i.test(notes))  return 'Warranty 3 months'
   return null
+}
+
+function stripWarranty(notes = '') {
+  return notes
+    .replace(/质保\s*\d+\s*个月/gi, '')
+    .replace(/warranty\s*\d+\s*months?/gi, '')
+    .split('\n')
+    .map(s => s.trim())
+    .filter(Boolean)
+    .join('\n')
 }
 
 function buildQuote(vehicle, part) {
@@ -232,14 +277,21 @@ function ListItem({ primary, secondary, right, onClick, last }) {
 
 // ── PartCard ──────────────────────────────────────────────────────────────────
 function PartCard({ part, vehicle, last, onEdit }) {
-  const [open, setOpen] = useState(false)
+  const [open,   setOpen]   = useState(false)
+  const [copied, setCopied] = useState(false)
+
   const priceOpts = parsePriceOptions(part)
   const warranty  = parseWarranty(part.notes)
   const hasMulti  = priceOpts && priceOpts.length > 1
 
   const copy = () => {
     const text = buildQuote(vehicle, part)
-    if (navigator.clipboard) navigator.clipboard.writeText(text)
+    if (navigator.clipboard) {
+      navigator.clipboard.writeText(text).then(() => {
+        setCopied(true)
+        setTimeout(() => setCopied(false), 1500)
+      })
+    }
   }
 
   const priceDisplay = !priceOpts ? (
@@ -313,13 +365,16 @@ function PartCard({ part, vehicle, last, onEdit }) {
             <button
               onClick={copy}
               style={{
-                background: C.canvas, border: `1px solid ${C.line}`,
+                background: copied ? '#f0eef8' : C.canvas,
+                border: `1px solid ${copied ? C.primary : C.line}`,
                 borderRadius: 8, padding: '7px 14px',
-                fontSize: 13, fontWeight: 500, color: C.ink,
+                fontSize: 13, fontWeight: 500,
+                color: copied ? C.primary : C.ink,
                 cursor: 'pointer', fontFamily: FONT,
+                transition: 'all 0.15s',
               }}
             >
-              Copy Quote
+              {copied ? 'Copied' : 'Copy Quote'}
             </button>
             <button
               onClick={() => onEdit(part)}
@@ -351,17 +406,20 @@ function AddPartModal({ part, contextVehicle, contextMake, makes, onClose, onSav
     part_name:    part?.part_name    || '',
     vehicle_make: part?.vehicle_make || contextMake    || '',
     vehicle_text: part?.vehicle_text || contextVehicle || '',
-    category:     part?.category     || '',
-    notes:        part?.notes        || '',
+    category:     normCat(part?.category) || '',
+    notes:        stripWarranty(part?.notes || ''),
   })
   const [priceType, setPriceType] = useState(() => {
     if (!part) return 'tbc'
-    if (part.selling_price_text && (part.selling_price_text.includes('/') || part.selling_price_text.includes('·'))) return 'multi'
-    if (part.selling_price != null || part.selling_price_text) return 'fixed'
+    if (part.selling_price_text) {
+      const hasMultiple = part.selling_price_text.includes('/') || part.selling_price_text.includes('·')
+      return hasMultiple ? 'multi' : 'text'
+    }
+    if (part.selling_price != null) return 'fixed'
     return 'tbc'
   })
   const [fixedPrice, setFixedPrice] = useState(part?.selling_price ?? '')
-  const [multiPrice, setMultiPrice] = useState(part?.selling_price_text || '')
+  const [priceText,  setPriceText]  = useState(part?.selling_price_text || '')
   const [warranty,   setWarranty]   = useState(() => {
     const w = parseWarranty(part?.notes || '')
     if (!w) return 'none'
@@ -370,17 +428,23 @@ function AddPartModal({ part, contextVehicle, contextMake, makes, onClose, onSav
     if (w.includes('3'))  return '3'
     return 'none'
   })
+  const [formError, setFormError] = useState('')
 
-  const set = k => e => setForm(f => ({ ...f, [k]: e.target.value }))
+  const set = k => e => { setFormError(''); setForm(f => ({ ...f, [k]: e.target.value })) }
 
   const submit = () => {
-    if (!form.part_name.trim()) { alert('Part name is required.'); return }
-    if (!form.category)         { alert('Category is required.'); return }
+    setFormError('')
+    if (!form.part_name.trim()) { setFormError('Part name is required.'); return }
+    if (!form.category)         { setFormError('Category is required.'); return }
+    if (scope === 'vehicle' && (!form.vehicle_make || !form.vehicle_text?.trim())) {
+      setFormError('Vehicle make and description are required for specific vehicle parts.')
+      return
+    }
 
-    let notes = form.notes
+    let notes = stripWarranty(form.notes)
     if (warranty !== 'none') {
       const tag = `Warranty ${warranty} months`
-      if (!notes.includes(tag)) notes = notes ? `${notes}\n${tag}` : tag
+      notes = notes ? `${notes}\n${tag}` : tag
     }
 
     onSave({
@@ -390,7 +454,7 @@ function AddPartModal({ part, contextVehicle, contextMake, makes, onClose, onSav
       category:           form.category,
       notes:              notes.trim(),
       selling_price:      priceType === 'fixed' && fixedPrice !== '' ? parseFloat(fixedPrice) : null,
-      selling_price_text: priceType === 'multi' ? multiPrice.trim() : null,
+      selling_price_text: (priceType === 'multi' || priceType === 'text') ? priceText.trim() : null,
     })
   }
 
@@ -413,6 +477,8 @@ function AddPartModal({ part, contextVehicle, contextMake, makes, onClose, onSav
     color: active ? C.primary : C.slate,
   })
 
+  const vehicleScopeLabel = contextVehicle ? 'Current Vehicle' : 'Specific Vehicle'
+
   return (
     <div className="modal-bg show" onClick={e => e.target === e.currentTarget && onClose()}>
       <div className="modal" style={{ maxWidth: 480 }}>
@@ -427,11 +493,11 @@ function AddPartModal({ part, contextVehicle, contextMake, makes, onClose, onSav
           <div>
             <label style={lbl}>Vehicle Scope</label>
             <div style={{ display: 'flex', borderRadius: 8, overflow: 'hidden' }}>
-              <button onClick={() => setScope('vehicle')}
+              <button onClick={() => { setScope('vehicle'); setFormError('') }}
                 style={{ ...seg(scope === 'vehicle'), borderRadius: '8px 0 0 8px', borderRight: 'none' }}>
-                Current Vehicle
+                {vehicleScopeLabel}
               </button>
-              <button onClick={() => setScope('general')}
+              <button onClick={() => { setScope('general'); setFormError('') }}
                 style={{ ...seg(scope === 'general'), borderRadius: '0 8px 8px 0' }}>
                 General Part
               </button>
@@ -465,14 +531,14 @@ function AddPartModal({ part, contextVehicle, contextMake, makes, onClose, onSav
             <label style={lbl}>Category *</label>
             <select value={form.category} onChange={set('category')} style={inp}>
               <option value="">— select —</option>
-              {ALL_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+              {CATEGORY_OPTIONS.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
             </select>
           </div>
 
           <div>
             <label style={lbl}>Price Type</label>
             <div style={{ display: 'flex', borderRadius: 8, overflow: 'hidden' }}>
-              {[['fixed','Fixed Price'],['multi','Multiple Options'],['tbc','TBC']].map(([v, l], i, arr) => (
+              {[['fixed','Fixed'],['multi','Multiple'],['text','Text'],['tbc','TBC']].map(([v, l], i, arr) => (
                 <button key={v} onClick={() => setPriceType(v)} style={{
                   ...seg(priceType === v),
                   borderRadius: i === 0 ? '8px 0 0 8px' : i === arr.length - 1 ? '0 8px 8px 0' : '0',
@@ -494,8 +560,15 @@ function AddPartModal({ part, contextVehicle, contextMake, makes, onClose, onSav
           {priceType === 'multi' && (
             <div>
               <label style={lbl}>Price Options</label>
-              <input value={multiPrice} onChange={e => setMultiPrice(e.target.value)}
+              <input value={priceText} onChange={e => setPriceText(e.target.value)}
                 placeholder="e.g. New $3,600 / Recon $2,800" style={inp} />
+            </div>
+          )}
+          {priceType === 'text' && (
+            <div>
+              <label style={lbl}>Price Text</label>
+              <input value={priceText} onChange={e => setPriceText(e.target.value)}
+                placeholder="e.g. From $900, $1,800–$2,500" style={inp} />
             </div>
           )}
 
@@ -522,6 +595,12 @@ function AddPartModal({ part, contextVehicle, contextMake, makes, onClose, onSav
               placeholder="Additional notes..." rows={2}
               style={{ ...inp, height: 'auto', resize: 'vertical', lineHeight: 1.5 }} />
           </div>
+
+          {formError && (
+            <div style={{ fontSize: 13, color: C.error, fontFamily: FONT, marginTop: -8 }}>
+              {formError}
+            </div>
+          )}
 
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, paddingTop: 4 }}>
             <button className="btn" onClick={onClose}>Cancel</button>
@@ -550,12 +629,12 @@ export default function Parts() {
   const [selectedCategory, setSelectedCategory] = useState(null)
   const [drillOrigin,      setDrillOrigin]      = useState('home')
 
-  const [brands,       setBrands]       = useState([])
-  const [vehicles,     setVehicles]     = useState([])
-  const [categories,   setCategories]   = useState([])
-  const [exactParts,   setExactParts]   = useState([])
-  const [generalParts, setGeneralParts] = useState([])
-  const [searchResults,setSearchResults]= useState([])
+  const [brands,        setBrands]        = useState([])
+  const [vehicles,      setVehicles]      = useState([])
+  const [categories,    setCategories]    = useState([])
+  const [exactParts,    setExactParts]    = useState([])
+  const [generalParts,  setGeneralParts]  = useState([])
+  const [searchResults, setSearchResults] = useState([])
 
   const [loading, setLoading] = useState(false)
   const [searchQ, setSearchQ] = useState('')
@@ -598,7 +677,7 @@ export default function Parts() {
       .then(({ data }) => { setVehicles(dedupe(data, 'vehicle_text')); setLoading(false) })
   }, [view, selectedMake])
 
-  // Step 3: categories for vehicle (including general)
+  // Step 3: categories for vehicle (including general) — normalize to values
   useEffect(() => {
     if (view !== 'step3' || !selectedVehicle) return
     setLoading(true)
@@ -609,7 +688,8 @@ export default function Parts() {
     ]).then(([vRes, gRes]) => {
       const counts = {}
       for (const row of [...(vRes.data || []), ...(gRes.data || [])]) {
-        if (row.category) counts[row.category] = (counts[row.category] || 0) + 1
+        const val = normCat(row.category)
+        if (val) counts[val] = (counts[val] || 0) + 1
       }
       const cats = Object.entries(counts).map(([name, count]) => ({ name, count }))
       cats.sort((a, b) => {
@@ -618,26 +698,27 @@ export default function Parts() {
         if (ia !== -1 && ib !== -1) return ia - ib
         if (ia !== -1) return -1
         if (ib !== -1) return 1
-        return a.name.localeCompare(b.name)
+        return getCategoryLabel(a.name).localeCompare(getCategoryLabel(b.name))
       })
       setCategories(cats)
       setLoading(false)
     })
   }, [view, selectedVehicle])
 
-  // Results: exact + general parts
+  // Results: exact + general parts — use ilike for category to match old label format and new value format
   useEffect(() => {
     if (view !== 'results' || !selectedVehicle || !selectedCategory) return
     setLoading(true)
+    const catLabel = getCategoryLabel(selectedCategory)
     Promise.all([
       supabase.from('parts_library').select('*')
         .ilike('vehicle_text', `%${selectedVehicle}%`)
-        .eq('category', selectedCategory)
+        .ilike('category', catLabel)
         .not('vehicle_make', 'eq', 'General')
         .order('part_name'),
       supabase.from('parts_library').select('*')
         .or('vehicle_make.eq.General,vehicle_text.ilike.%general%,vehicle_text.ilike.%通用%')
-        .eq('category', selectedCategory)
+        .ilike('category', catLabel)
         .order('part_name'),
     ]).then(([eRes, gRes]) => {
       setExactParts(eRes.data || [])
@@ -703,8 +784,8 @@ export default function Parts() {
     setView('step3')
   }
 
-  const selectCategory = (category) => {
-    setSelectedCategory(category)
+  const selectCategory = (categoryValue) => {
+    setSelectedCategory(categoryValue)
     setView('results')
   }
 
@@ -736,13 +817,15 @@ export default function Parts() {
     setModal(null)
   }
 
+  const catLabel = selectedCategory ? getCategoryLabel(selectedCategory) : ''
+
   const headerProps = (() => {
-    if (view === 'home')    return { title: 'Parts Lookup',     backLabel: null,             onBack: null }
-    if (view === 'step1')   return { title: 'All Brands',       backLabel: 'Parts',          onBack: goHome }
-    if (view === 'step2')   return { title: selectedMake,       backLabel: 'Parts',          onBack: drillOrigin === 'home' ? goHome : () => setView('step1') }
-    if (view === 'step3')   return { title: selectedVehicle,    backLabel: selectedMake,     onBack: () => setView('step2') }
-    if (view === 'results') return { title: selectedCategory,   backLabel: selectedVehicle,  onBack: () => setView('step3') }
-    if (view === 'search')  return { title: 'Search Results',   backLabel: 'Parts',          onBack: goHome }
+    if (view === 'home')    return { title: 'Parts Lookup', backLabel: null,            onBack: null }
+    if (view === 'step1')   return { title: 'All Brands',   backLabel: 'Parts',         onBack: goHome }
+    if (view === 'step2')   return { title: selectedMake,   backLabel: 'Parts',         onBack: drillOrigin === 'home' ? goHome : () => setView('step1') }
+    if (view === 'step3')   return { title: selectedVehicle, backLabel: selectedMake,   onBack: () => setView('step2') }
+    if (view === 'results') return { title: catLabel,        backLabel: selectedVehicle, onBack: () => setView('step3') }
+    if (view === 'search')  return { title: 'Search Results', backLabel: 'Parts',       onBack: goHome }
     return { title: 'Parts', backLabel: null, onBack: null }
   })()
 
@@ -826,7 +909,7 @@ export default function Parts() {
                 {recent.map((entry, i) => (
                   <ListItem
                     key={entry.timestamp}
-                    primary={`${entry.vehicle} · ${entry.category}`}
+                    primary={`${entry.vehicle} · ${getCategoryLabel(entry.category)}`}
                     secondary={entry.make}
                     last={i === recent.length - 1}
                     onClick={() => loadRecent(entry)}
@@ -883,7 +966,7 @@ export default function Parts() {
               {categories.map((cat, i) => (
                 <ListItem
                   key={cat.name}
-                  primary={cat.name}
+                  primary={getCategoryLabel(cat.name)}
                   right={<CountBadge count={cat.count} />}
                   last={i === categories.length - 1}
                   onClick={() => selectCategory(cat.name)}
@@ -898,7 +981,7 @@ export default function Parts() {
       {view === 'results' && (
         <div style={{ padding: '16px' }}>
           <div style={{ fontSize: 13, color: C.steel, marginBottom: 16, fontFamily: FONT }}>
-            {selectedMake} · {selectedVehicle} · {selectedCategory}
+            {selectedMake} · {selectedVehicle} · {catLabel}
           </div>
 
           {loading ? <Spinner /> : (exactParts.length === 0 && generalParts.length === 0) ? (
