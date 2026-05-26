@@ -1,435 +1,538 @@
-import { useState, useEffect } from 'react'
-import { Plus } from 'lucide-react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import { supabase, addPart, updatePart } from '../lib/supabase'
 
-// ── helpers ───────────────────────────────────────────────────────────────────
+// ── Design tokens ─────────────────────────────────────────────────────────────
+const FONT = '"Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif'
+const C = {
+  bg:       '#f6f5f4',
+  canvas:   '#ffffff',
+  line:     '#e5e3df',
+  lineSoft: '#ede9e4',
+  ink:      '#1a1a1a',
+  charcoal: '#37352f',
+  slate:    '#5d5b54',
+  steel:    '#787671',
+  muted:    '#bbb8b1',
+  primary:  '#5645d4',
+}
 
-function fmtPrice(part) {
-  if (part?.selling_price != null && part.selling_price !== '') {
-    return `$${Math.round(part.selling_price).toLocaleString()}`
+// ── Constants ─────────────────────────────────────────────────────────────────
+const BRAND_SHORTCUTS = ['Honda', 'Toyota', 'Nissan', 'Mitsubishi', 'Hyundai', 'Kia', 'BMW', 'Mercedes', 'Audi']
+const CATEGORY_ORDER  = ['Transmission', 'Engine', 'Air Con', 'Suspension', 'Brakes', 'Steering', 'Cooling', 'Electrical', 'Clutch', 'Others']
+const ALL_CATEGORIES  = ['Transmission', 'Engine', 'Air Con', 'Suspension', 'Brakes', 'Steering', 'Cooling', 'Electrical', 'Clutch', 'Drivetrain', 'Hybrid', 'Ignition', 'Mounting', 'Others', 'Service', 'Tyre', 'Wheel Bearing']
+const RECENT_KEY = 'kcars_parts_recent'
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+function dedupe(rows, key) {
+  const seen = new Set()
+  return (rows || []).reduce((acc, row) => {
+    const v = row[key]
+    if (v && !seen.has(v)) { seen.add(v); acc.push(v) }
+    return acc
+  }, [])
+}
+
+function parsePriceOptions(part) {
+  if (part?.selling_price_text) {
+    const text = part.selling_price_text.trim()
+    const hasMultiple = text.includes('/') || text.includes('·')
+    if (hasMultiple) {
+      const sep = text.includes('/') ? '/' : '·'
+      return text.split(sep).map(s => {
+        const clean = s.trim()
+        const m = clean.match(/^(.*?)\s*(\$[\d,]+(?:\.\d+)?)(.*)$/)
+        if (m) return { label: m[1].trim(), amount: (m[2] + m[3]).trim() }
+        return { label: '', amount: clean }
+      }).filter(p => p.amount)
+    }
+    return [{ label: '', amount: text }]
   }
-  if (part?.selling_price_text) return part.selling_price_text
+  if (part?.selling_price != null && part.selling_price !== '') {
+    return [{ label: '', amount: `$${Math.round(part.selling_price).toLocaleString()}` }]
+  }
   return null
 }
 
-function dedupe(rows, key) {
-  const seen = new Set()
-  const out = []
-  for (const row of rows) {
-    const v = row[key]
-    if (v && !seen.has(v)) { seen.add(v); out.push(v) }
-  }
-  return out
+function parseWarranty(notes) {
+  if (!notes) return null
+  if (/12\s*(个月|months?)/i.test(notes)) return 'Warranty 12 months'
+  if (/6\s*(个月|months?)/i.test(notes))  return 'Warranty 6 months'
+  if (/3\s*(个月|months?)/i.test(notes))  return 'Warranty 3 months'
+  return null
 }
 
-// ── BackBtn ───────────────────────────────────────────────────────────────────
+function buildQuote(vehicle, part) {
+  const opts = parsePriceOptions(part)
+  const priceStr = opts ? opts.map(p => p.label ? `${p.label} ${p.amount}` : p.amount).join(' / ') : 'TBC'
+  const warranty = parseWarranty(part.notes)
+  return `${vehicle} ${part.part_name}: ${priceStr}${warranty ? `, ${warranty}` : ''}`
+}
 
-function BackBtn({ label, onClick }) {
-  return (
-    <button
-      onClick={onClick}
-      style={{
-        background: 'none',
-        border: 'none',
-        cursor: 'pointer',
-        fontSize: 17,
-        fontWeight: 400,
-        color: 'var(--orange)',
-        padding: 0,
-        fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", system-ui, sans-serif',
-        flexShrink: 0,
-        whiteSpace: 'nowrap',
-        letterSpacing: '-0.374px',
-        lineHeight: 1,
-      }}
-    >
-      {'‹ '}{label}
-    </button>
+function isGeneral(part) {
+  const make = (part.vehicle_make || '').toLowerCase()
+  const text = (part.vehicle_text || '').toLowerCase()
+  return make === 'general' || text.includes('general') || text.includes('通用')
+}
+
+function getRecent() {
+  try { return JSON.parse(localStorage.getItem(RECENT_KEY) || '[]') } catch { return [] }
+}
+
+function saveRecent(entry) {
+  const list = getRecent().filter(r =>
+    !(r.make === entry.make && r.vehicle === entry.vehicle && r.category === entry.category)
   )
+  list.unshift({ ...entry, timestamp: Date.now() })
+  localStorage.setItem(RECENT_KEY, JSON.stringify(list.slice(0, 5)))
 }
 
-// ── StepHeader ────────────────────────────────────────────────────────────────
-
-function StepHeader({ title, backLabel, onBack, onAdd }) {
+// ── Spinner ───────────────────────────────────────────────────────────────────
+function Spinner() {
   return (
-    <div style={{
-      position: 'sticky',
-      top: 0,
-      zIndex: 10,
-      background: 'rgba(245,245,247,0.85)',
-      backdropFilter: 'saturate(180%) blur(20px)',
-      WebkitBackdropFilter: 'saturate(180%) blur(20px)',
-      borderBottom: '1px solid #e0e0e0',
-      minHeight: 44,
-      padding: '0 16px',
-      display: 'flex',
-      alignItems: 'center',
-    }}>
-      {/* Left — back button */}
-      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'flex-start' }}>
-        {backLabel && onBack && (
-          <BackBtn label={backLabel} onClick={onBack} />
-        )}
-      </div>
-
-      {/* Center — title */}
-      <div style={{
-        fontSize: 17,
-        fontWeight: 600,
-        color: '#1d1d1f',
-        letterSpacing: '-0.374px',
-        fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", system-ui, sans-serif',
-        whiteSpace: 'nowrap',
-        overflow: 'hidden',
-        textOverflow: 'ellipsis',
-        maxWidth: '40%',
-        textAlign: 'center',
-      }}>
-        {title}
-      </div>
-
-      {/* Right — add button */}
-      <div style={{ flex: 1, display: 'flex', alignItems: 'center', justifyContent: 'flex-end' }}>
-        <button
-          className="btn btn-primary"
-          onClick={onAdd}
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: 4,
-            fontSize: 13,
-            padding: '6px 12px',
-            flexShrink: 0,
-          }}
-        >
-          <Plus size={12} /> Add Part
-        </button>
-      </div>
+    <div style={{ display: 'flex', justifyContent: 'center', padding: '64px 0' }}>
+      <div className="spinner" />
     </div>
   )
 }
 
-// ── PageSubtitle ──────────────────────────────────────────────────────────────
-
-function PageSubtitle({ text }) {
-  if (!text) return null
+// ── EmptyState ────────────────────────────────────────────────────────────────
+function EmptyState({ message }) {
   return (
-    <div style={{
-      fontSize: 13,
-      color: '#6e6e73',
-      padding: '12px 32px 4px',
-      letterSpacing: '-0.08px',
-      fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", system-ui, sans-serif',
-    }}>
-      {text}
+    <div style={{ textAlign: 'center', padding: '56px 24px', color: C.steel, fontSize: 14, fontFamily: FONT }}>
+      {message || 'No results found'}
     </div>
   )
 }
 
-// ── ListCard ──────────────────────────────────────────────────────────────────
-
-function ListCard({ children }) {
+// ── SectionCard ───────────────────────────────────────────────────────────────
+function SectionCard({ children }) {
   return (
     <div style={{
-      background: '#ffffff',
-      borderRadius: 18,
-      border: '1px solid #e0e0e0',
+      background: C.canvas,
+      border: `1px solid ${C.line}`,
+      borderRadius: 12,
       overflow: 'hidden',
-      margin: '0 16px 24px',
     }}>
       {children}
     </div>
   )
 }
 
-// ── ListRow ───────────────────────────────────────────────────────────────────
+// ── SectionLabel ──────────────────────────────────────────────────────────────
+function SectionLabel({ text }) {
+  return (
+    <div style={{
+      fontSize: 11, fontWeight: 600, letterSpacing: 0.5,
+      color: C.steel, textTransform: 'uppercase',
+      padding: '16px 4px 6px',
+      fontFamily: FONT,
+    }}>
+      {text}
+    </div>
+  )
+}
 
-function ListRow({ primary, secondary, badge, chevron, price, onClick }) {
-  const [hovered, setHovered] = useState(false)
+// ── PageHeader ────────────────────────────────────────────────────────────────
+function PageHeader({ title, backLabel, onBack, onAdd }) {
+  return (
+    <div style={{
+      position: 'sticky', top: 0, zIndex: 10,
+      background: C.canvas,
+      borderBottom: `1px solid ${C.line}`,
+      height: 52,
+      padding: '0 16px',
+      display: 'flex', alignItems: 'center',
+      fontFamily: FONT,
+    }}>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        {backLabel && onBack && (
+          <button
+            onClick={onBack}
+            style={{
+              background: 'none', border: 'none', cursor: 'pointer',
+              fontSize: 14, fontWeight: 500, color: C.primary,
+              padding: 0, fontFamily: FONT,
+              display: 'flex', alignItems: 'center', gap: 4,
+            }}
+          >
+            <span style={{ fontSize: 18, lineHeight: 1 }}>‹</span> {backLabel}
+          </button>
+        )}
+      </div>
+      <div style={{
+        fontSize: 15, fontWeight: 600, color: C.ink,
+        textAlign: 'center', flex: 2,
+        overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+      }}>
+        {title}
+      </div>
+      <div style={{ flex: 1, display: 'flex', justifyContent: 'flex-end' }}>
+        <button
+          onClick={onAdd}
+          style={{
+            background: C.primary, color: '#fff', border: 'none',
+            borderRadius: 8, padding: '7px 12px',
+            fontSize: 13, fontWeight: 500, cursor: 'pointer',
+            fontFamily: FONT, whiteSpace: 'nowrap',
+          }}
+        >
+          + Add Part
+        </button>
+      </div>
+    </div>
+  )
+}
 
+// ── CountBadge ────────────────────────────────────────────────────────────────
+function CountBadge({ count }) {
+  return (
+    <span style={{
+      fontSize: 12, fontWeight: 500, color: C.steel,
+      background: '#f0eeec', borderRadius: 9999,
+      padding: '2px 8px', fontFamily: FONT,
+    }}>
+      {count}
+    </span>
+  )
+}
+
+// ── ListItem ──────────────────────────────────────────────────────────────────
+function ListItem({ primary, secondary, right, onClick, last }) {
+  const [hov, setHov] = useState(false)
   return (
     <div
       onClick={onClick}
-      onMouseEnter={() => setHovered(true)}
-      onMouseLeave={() => setHovered(false)}
+      onMouseEnter={() => setHov(true)}
+      onMouseLeave={() => setHov(false)}
       style={{
-        display: 'flex',
-        alignItems: 'center',
-        padding: '12px 16px',
-        minHeight: 44,
-        background: hovered ? '#f5f5f7' : '#ffffff',
+        display: 'flex', alignItems: 'center',
+        padding: '0 16px', minHeight: 52,
+        background: hov && onClick ? '#f0eef8' : C.canvas,
         cursor: onClick ? 'pointer' : 'default',
         transition: 'background 0.1s',
-        fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", system-ui, sans-serif',
+        borderBottom: last ? 'none' : `1px solid ${C.lineSoft}`,
+        fontFamily: FONT,
       }}
     >
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{
-          fontSize: 17,
-          fontWeight: 400,
-          color: '#1d1d1f',
-          letterSpacing: '-0.374px',
-          lineHeight: 1.35,
-        }}>
-          {primary}
-        </div>
+      <div style={{ flex: 1, minWidth: 0, padding: '12px 0' }}>
+        <div style={{ fontSize: 15, fontWeight: 400, color: C.ink, lineHeight: 1.4 }}>{primary}</div>
         {secondary && (
-          <div style={{
-            fontSize: 14,
-            fontWeight: 400,
-            color: '#6e6e73',
-            letterSpacing: '-0.224px',
-            marginTop: 2,
-            lineHeight: 1.3,
-          }}>
-            {secondary}
-          </div>
+          <div style={{ fontSize: 13, color: C.steel, marginTop: 2, lineHeight: 1.3 }}>{secondary}</div>
         )}
       </div>
-
-      {badge != null && (
-        <span style={{
-          fontSize: 13,
-          fontWeight: 600,
-          padding: '1px 7px',
-          borderRadius: 9999,
-          background: 'rgba(210,210,215,0.64)',
-          color: '#1d1d1f',
-          marginLeft: 8,
-          flexShrink: 0,
-          fontFamily: 'inherit',
-        }}>
-          {badge}
-        </span>
+      {right != null && (
+        <div style={{ flexShrink: 0, marginLeft: 12 }}>{right}</div>
       )}
-
-      {price != null && (
-        price === 'TBC' ? (
-          <span style={{
-            fontSize: 14,
-            fontWeight: 400,
-            color: '#6e6e73',
-            marginLeft: 12,
-            flexShrink: 0,
-          }}>
-            TBC
-          </span>
-        ) : (
-          <span style={{
-            fontSize: 17,
-            fontWeight: 600,
-            color: 'var(--orange)',
-            fontFeatureSettings: '"tnum"',
-            letterSpacing: '-0.374px',
-            marginLeft: 12,
-            flexShrink: 0,
-          }}>
-            {price}
-          </span>
-        )
-      )}
-
-      {chevron && (
-        <span style={{
-          color: '#c7c7cc',
-          fontSize: 20,
-          marginLeft: 8,
-          flexShrink: 0,
-          lineHeight: 1,
-        }}>
-          ›
-        </span>
+      {onClick && (
+        <span style={{ color: C.muted, fontSize: 18, marginLeft: 8, flexShrink: 0 }}>›</span>
       )}
     </div>
   )
 }
 
-// ── LoadingView ───────────────────────────────────────────────────────────────
+// ── PartCard ──────────────────────────────────────────────────────────────────
+function PartCard({ part, vehicle, last, onEdit }) {
+  const [open, setOpen] = useState(false)
+  const priceOpts = parsePriceOptions(part)
+  const warranty  = parseWarranty(part.notes)
+  const hasMulti  = priceOpts && priceOpts.length > 1
 
-function LoadingView() {
+  const copy = () => {
+    const text = buildQuote(vehicle, part)
+    if (navigator.clipboard) navigator.clipboard.writeText(text)
+  }
+
+  const priceDisplay = !priceOpts ? (
+    <span style={{ fontSize: 13, color: C.steel, fontFamily: FONT }}>TBC</span>
+  ) : hasMulti ? (
+    <span style={{ fontSize: 14, fontWeight: 500, color: 'var(--orange)', fontFeatureSettings: '"tnum"', fontFamily: FONT }}>
+      from {priceOpts[0].amount}
+    </span>
+  ) : (
+    <span style={{ fontSize: 15, fontWeight: 600, color: 'var(--orange)', fontFeatureSettings: '"tnum"', fontFamily: FONT }}>
+      {priceOpts[0].label ? `${priceOpts[0].label} ` : ''}{priceOpts[0].amount}
+    </span>
+  )
+
   return (
-    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', padding: '64px 0' }}>
-      <div className="spinner" />
+    <div style={{ borderBottom: last ? 'none' : `1px solid ${C.lineSoft}` }}>
+      <div
+        onClick={() => setOpen(o => !o)}
+        style={{
+          display: 'flex', alignItems: 'flex-start',
+          padding: '14px 16px', minHeight: 52,
+          cursor: 'pointer',
+          background: open ? C.bg : C.canvas,
+          transition: 'background 0.1s',
+          fontFamily: FONT,
+        }}
+      >
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <div style={{ fontSize: 15, fontWeight: 500, color: C.ink, lineHeight: 1.4 }}>
+            {part.part_name}
+          </div>
+          {warranty && (
+            <div style={{ fontSize: 12, color: C.slate, marginTop: 3 }}>{warranty}</div>
+          )}
+        </div>
+        <div style={{ flexShrink: 0, marginLeft: 12, textAlign: 'right' }}>
+          {priceDisplay}
+        </div>
+      </div>
+
+      {open && (
+        <div style={{ background: C.bg, padding: '0 16px 14px', fontFamily: FONT }}>
+          {hasMulti && (
+            <div style={{
+              background: C.canvas, borderRadius: 8, border: `1px solid ${C.line}`,
+              padding: '10px 14px', marginBottom: 10,
+            }}>
+              {priceOpts.map((opt, i) => (
+                <div key={i} style={{
+                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                  paddingBottom: i < priceOpts.length - 1 ? 8 : 0,
+                  marginBottom: i < priceOpts.length - 1 ? 8 : 0,
+                  borderBottom: i < priceOpts.length - 1 ? `1px solid ${C.lineSoft}` : 'none',
+                }}>
+                  <span style={{ fontSize: 14, color: C.charcoal }}>{opt.label || 'Price'}</span>
+                  <span style={{ fontSize: 15, fontWeight: 600, color: 'var(--orange)', fontFeatureSettings: '"tnum"' }}>
+                    {opt.amount}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {part.notes && (
+            <div style={{ fontSize: 13, color: C.slate, marginBottom: 12, lineHeight: 1.5 }}>
+              {part.notes}
+            </div>
+          )}
+
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button
+              onClick={copy}
+              style={{
+                background: C.canvas, border: `1px solid ${C.line}`,
+                borderRadius: 8, padding: '7px 14px',
+                fontSize: 13, fontWeight: 500, color: C.ink,
+                cursor: 'pointer', fontFamily: FONT,
+              }}
+            >
+              Copy Quote
+            </button>
+            <button
+              onClick={() => onEdit(part)}
+              style={{
+                background: 'transparent', border: `1px solid ${C.line}`,
+                borderRadius: 8, padding: '7px 14px',
+                fontSize: 13, fontWeight: 500, color: C.slate,
+                cursor: 'pointer', fontFamily: FONT,
+              }}
+            >
+              Edit
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
 
-// ── EmptyView ─────────────────────────────────────────────────────────────────
+// ── AddPartModal ──────────────────────────────────────────────────────────────
+function AddPartModal({ part, contextVehicle, contextMake, makes, onClose, onSave, saving }) {
+  const isEdit = !!part
 
-function EmptyView({ message }) {
-  return (
-    <div style={{
-      textAlign: 'center',
-      padding: '56px 24px',
-      color: '#6e6e73',
-      fontSize: 14,
-      fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", system-ui, sans-serif',
-      letterSpacing: '-0.224px',
-    }}>
-      {message || 'No data found'}
-    </div>
-  )
-}
-
-// ── PartModal ─────────────────────────────────────────────────────────────────
-
-function PartModal({ part, mode, makes, onClose, onSave, saving }) {
+  const [scope, setScope] = useState(() => {
+    if (part) return isGeneral(part) ? 'general' : 'vehicle'
+    return contextVehicle ? 'vehicle' : 'general'
+  })
   const [form, setForm] = useState({
-    part_name:          part?.part_name          || '',
-    vehicle_make:       part?.vehicle_make        || '',
-    vehicle_model:      part?.vehicle_model       || '',
-    vehicle_text:       part?.vehicle_text        || '',
-    category:           part?.category            || '',
-    selling_price:      part?.selling_price       ?? '',
-    selling_price_text: part?.selling_price_text  || '',
-    cost_price:         part?.cost_price          ?? '',
-    notes:              part?.notes               || '',
-    status:             part?.status              || 'active',
+    part_name:    part?.part_name    || '',
+    vehicle_make: part?.vehicle_make || contextMake    || '',
+    vehicle_text: part?.vehicle_text || contextVehicle || '',
+    category:     part?.category     || '',
+    notes:        part?.notes        || '',
+  })
+  const [priceType, setPriceType] = useState(() => {
+    if (!part) return 'tbc'
+    if (part.selling_price_text && (part.selling_price_text.includes('/') || part.selling_price_text.includes('·'))) return 'multi'
+    if (part.selling_price != null || part.selling_price_text) return 'fixed'
+    return 'tbc'
+  })
+  const [fixedPrice, setFixedPrice] = useState(part?.selling_price ?? '')
+  const [multiPrice, setMultiPrice] = useState(part?.selling_price_text || '')
+  const [warranty,   setWarranty]   = useState(() => {
+    const w = parseWarranty(part?.notes || '')
+    if (!w) return 'none'
+    if (w.includes('12')) return '12'
+    if (w.includes('6'))  return '6'
+    if (w.includes('3'))  return '3'
+    return 'none'
   })
 
-  const set = (k) => (e) => setForm(f => ({ ...f, [k]: e.target.value }))
+  const set = k => e => setForm(f => ({ ...f, [k]: e.target.value }))
 
   const submit = () => {
     if (!form.part_name.trim()) { alert('Part name is required.'); return }
+    if (!form.category)         { alert('Category is required.'); return }
+
+    let notes = form.notes
+    if (warranty !== 'none') {
+      const tag = `Warranty ${warranty} months`
+      if (!notes.includes(tag)) notes = notes ? `${notes}\n${tag}` : tag
+    }
+
     onSave({
-      ...form,
-      selling_price: form.selling_price === '' ? null : parseFloat(form.selling_price),
-      cost_price:    form.cost_price    === '' ? null : parseFloat(form.cost_price),
+      part_name:          form.part_name.trim(),
+      vehicle_make:       scope === 'general' ? 'General' : form.vehicle_make,
+      vehicle_text:       scope === 'general' ? 'General' : form.vehicle_text.trim(),
+      category:           form.category,
+      notes:              notes.trim(),
+      selling_price:      priceType === 'fixed' && fixedPrice !== '' ? parseFloat(fixedPrice) : null,
+      selling_price_text: priceType === 'multi' ? multiPrice.trim() : null,
     })
   }
 
-  const inputStyle = {
-    width: '100%',
-    boxSizing: 'border-box',
-    padding: '9px 12px',
-    border: '1px solid #e0e0e0',
-    borderRadius: 10,
-    fontSize: 15,
-    color: '#1d1d1f',
-    outline: 'none',
-    background: '#ffffff',
-    fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", system-ui, sans-serif',
-    letterSpacing: '-0.224px',
+  const inp = {
+    width: '100%', boxSizing: 'border-box',
+    padding: '10px 12px', height: 44,
+    border: `1px solid ${C.line}`, borderRadius: 8,
+    fontSize: 15, color: C.ink, outline: 'none',
+    background: C.canvas, fontFamily: FONT,
   }
-
-  const labelStyle = {
-    fontSize: 13,
-    fontWeight: 400,
-    color: '#6e6e73',
-    letterSpacing: '-0.08px',
-    marginBottom: 5,
-    display: 'block',
-    fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", system-ui, sans-serif',
+  const lbl = {
+    fontSize: 13, fontWeight: 500, color: C.charcoal,
+    marginBottom: 5, display: 'block', fontFamily: FONT,
   }
+  const seg = active => ({
+    flex: 1, padding: '9px 8px', fontSize: 13, fontWeight: 500,
+    cursor: 'pointer', fontFamily: FONT, transition: 'all 0.1s',
+    border: `1px solid ${active ? C.primary : C.line}`,
+    background: active ? '#ede9fc' : C.canvas,
+    color: active ? C.primary : C.slate,
+  })
 
   return (
     <div className="modal-bg show" onClick={e => e.target === e.currentTarget && onClose()}>
-      <div className="modal" style={{ maxWidth: 500 }}>
+      <div className="modal" style={{ maxWidth: 480 }}>
         <div className="modal-head">
-          <h3 style={{
-            fontSize: 17,
-            fontWeight: 600,
-            color: '#1d1d1f',
-            letterSpacing: '-0.374px',
-            fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", system-ui, sans-serif',
-          }}>
-            {mode === 'add' ? 'Add Part' : 'Edit Part'}
+          <h3 style={{ fontSize: 16, fontWeight: 600, color: C.ink, fontFamily: FONT }}>
+            {isEdit ? 'Edit Part' : 'Add Part'}
           </h3>
           <button className="modal-close" onClick={onClose}>×</button>
         </div>
-        <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+        <div className="modal-body" style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
 
           <div>
-            <label style={labelStyle}>Part Name *</label>
-            <input
-              value={form.part_name}
-              onChange={set('part_name')}
-              placeholder="e.g. CVT Gearbox Assembly"
-              style={inputStyle}
-              autoFocus
-            />
-          </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-            <div>
-              <label style={labelStyle}>Vehicle Make</label>
-              <select value={form.vehicle_make} onChange={set('vehicle_make')} style={inputStyle}>
-                <option value="">— select —</option>
-                {makes.sort().map(m => (
-                  <option key={m} value={m}>{m}</option>
-                ))}
-              </select>
-            </div>
-            <div>
-              <label style={labelStyle}>Vehicle Model</label>
-              <input
-                value={form.vehicle_model}
-                onChange={set('vehicle_model')}
-                placeholder="e.g. Wish"
-                style={inputStyle}
-              />
+            <label style={lbl}>Vehicle Scope</label>
+            <div style={{ display: 'flex', borderRadius: 8, overflow: 'hidden' }}>
+              <button onClick={() => setScope('vehicle')}
+                style={{ ...seg(scope === 'vehicle'), borderRadius: '8px 0 0 8px', borderRight: 'none' }}>
+                Current Vehicle
+              </button>
+              <button onClick={() => setScope('general')}
+                style={{ ...seg(scope === 'general'), borderRadius: '0 8px 8px 0' }}>
+                General Part
+              </button>
             </div>
           </div>
 
-          <div>
-            <label style={labelStyle}>Vehicle Description</label>
-            <input
-              value={form.vehicle_text}
-              onChange={set('vehicle_text')}
-              placeholder="e.g. Toyota Wish 2.0 2009-2017"
-              style={inputStyle}
-            />
-          </div>
-
-          <div>
-            <label style={labelStyle}>Category</label>
-            <input
-              value={form.category}
-              onChange={set('category')}
-              placeholder="e.g. Transmission"
-              style={inputStyle}
-            />
-          </div>
-
-          <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
-            <div>
-              <label style={labelStyle}>Selling Price (SGD)</label>
-              <input
-                type="number"
-                value={form.selling_price}
-                onChange={set('selling_price')}
-                placeholder="e.g. 1800"
-                min="0"
-                step="1"
-                style={inputStyle}
-              />
+          {scope === 'vehicle' && (
+            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 12 }}>
+              <div>
+                <label style={lbl}>Vehicle Make</label>
+                <select value={form.vehicle_make} onChange={set('vehicle_make')} style={inp}>
+                  <option value="">— select —</option>
+                  {makes.sort().map(m => <option key={m} value={m}>{m}</option>)}
+                </select>
+              </div>
+              <div>
+                <label style={lbl}>Vehicle Text</label>
+                <input value={form.vehicle_text} onChange={set('vehicle_text')}
+                  placeholder="e.g. Honda Vezel 2017" style={inp} />
+              </div>
             </div>
+          )}
+
+          <div>
+            <label style={lbl}>Part Name *</label>
+            <input value={form.part_name} onChange={set('part_name')}
+              placeholder="e.g. CVT Gearbox Assembly" style={inp} autoFocus />
+          </div>
+
+          <div>
+            <label style={lbl}>Category *</label>
+            <select value={form.category} onChange={set('category')} style={inp}>
+              <option value="">— select —</option>
+              {ALL_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+            </select>
+          </div>
+
+          <div>
+            <label style={lbl}>Price Type</label>
+            <div style={{ display: 'flex', borderRadius: 8, overflow: 'hidden' }}>
+              {[['fixed','Fixed Price'],['multi','Multiple Options'],['tbc','TBC']].map(([v, l], i, arr) => (
+                <button key={v} onClick={() => setPriceType(v)} style={{
+                  ...seg(priceType === v),
+                  borderRadius: i === 0 ? '8px 0 0 8px' : i === arr.length - 1 ? '0 8px 8px 0' : '0',
+                  borderRight: i < arr.length - 1 ? 'none' : undefined,
+                }}>
+                  {l}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {priceType === 'fixed' && (
             <div>
-              <label style={labelStyle}>Price Range Text</label>
-              <input
-                value={form.selling_price_text}
-                onChange={set('selling_price_text')}
-                placeholder="e.g. $1800-$2500"
-                style={inputStyle}
-              />
+              <label style={lbl}>Price (SGD)</label>
+              <input type="number" value={fixedPrice} onChange={e => setFixedPrice(e.target.value)}
+                placeholder="e.g. 1800" min="0" style={inp} />
+            </div>
+          )}
+          {priceType === 'multi' && (
+            <div>
+              <label style={lbl}>Price Options</label>
+              <input value={multiPrice} onChange={e => setMultiPrice(e.target.value)}
+                placeholder="e.g. New $3,600 / Recon $2,800" style={inp} />
+            </div>
+          )}
+
+          <div>
+            <label style={lbl}>Warranty</label>
+            <div style={{ display: 'flex', gap: 8 }}>
+              {[['none','None'],['3','3 months'],['6','6 months'],['12','12 months']].map(([v, l]) => (
+                <button key={v} onClick={() => setWarranty(v)} style={{
+                  flex: 1, padding: '8px 4px', fontSize: 12, fontWeight: 500,
+                  borderRadius: 8, border: `1px solid ${warranty === v ? C.primary : C.line}`,
+                  background: warranty === v ? '#ede9fc' : C.canvas,
+                  color: warranty === v ? C.primary : C.slate,
+                  cursor: 'pointer', fontFamily: FONT,
+                }}>
+                  {l}
+                </button>
+              ))}
             </div>
           </div>
 
           <div>
-            <label style={labelStyle}>Notes</label>
-            <textarea
-              value={form.notes}
-              onChange={set('notes')}
-              placeholder="Additional notes, installation info..."
-              rows={2}
-              style={{ ...inputStyle, resize: 'vertical', lineHeight: 1.5 }}
-            />
+            <label style={lbl}>Notes</label>
+            <textarea value={form.notes} onChange={set('notes')}
+              placeholder="Additional notes..." rows={2}
+              style={{ ...inp, height: 'auto', resize: 'vertical', lineHeight: 1.5 }} />
           </div>
 
           <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, paddingTop: 4 }}>
             <button className="btn" onClick={onClose}>Cancel</button>
-            <button className="btn btn-primary" onClick={submit} disabled={saving}>
-              {saving ? 'Saving...' : mode === 'add' ? '+ Add Part' : 'Save'}
+            <button onClick={submit} disabled={saving} style={{
+              background: C.primary, color: '#fff', border: 'none',
+              borderRadius: 8, padding: '9px 18px',
+              fontSize: 14, fontWeight: 500,
+              cursor: saving ? 'wait' : 'pointer',
+              fontFamily: FONT, opacity: saving ? 0.7 : 1,
+            }}>
+              {saving ? 'Saving...' : isEdit ? 'Save' : 'Add Part'}
             </button>
           </div>
 
@@ -440,124 +543,176 @@ function PartModal({ part, mode, makes, onClose, onSave, saving }) {
 }
 
 // ── Main ──────────────────────────────────────────────────────────────────────
-
 export default function Parts() {
-  const [step, setStep]                         = useState(1)
-  const [selectedMake, setSelectedMake]         = useState(null)
-  const [selectedVehicle, setSelectedVehicle]   = useState(null)
+  const [view,             setView]             = useState('home')
+  const [selectedMake,     setSelectedMake]     = useState(null)
+  const [selectedVehicle,  setSelectedVehicle]  = useState(null)
   const [selectedCategory, setSelectedCategory] = useState(null)
+  const [drillOrigin,      setDrillOrigin]      = useState('home')
 
-  const [brands, setBrands]         = useState([])
-  const [vehicles, setVehicles]     = useState([])
-  const [categories, setCategories] = useState([])
-  const [parts, setParts]           = useState([])
+  const [brands,       setBrands]       = useState([])
+  const [vehicles,     setVehicles]     = useState([])
+  const [categories,   setCategories]   = useState([])
+  const [exactParts,   setExactParts]   = useState([])
+  const [generalParts, setGeneralParts] = useState([])
+  const [searchResults,setSearchResults]= useState([])
 
   const [loading, setLoading] = useState(false)
-  const [modal, setModal]     = useState(null)
-  const [saving, setSaving]   = useState(false)
+  const [searchQ, setSearchQ] = useState('')
+  const [recent,  setRecent]  = useState(getRecent)
+  const [modal,   setModal]   = useState(null)
+  const [saving,  setSaving]  = useState(false)
 
-  // Step 1 — fetch brands on mount
+  const homeInputRef   = useRef(null)
+  const searchInputRef = useRef(null)
+
+  // Fetch brand counts on mount
   useEffect(() => {
-    setLoading(true)
-    supabase
-      .from('parts_library')
-      .select('vehicle_make')
-      .order('vehicle_make')
-      .then(({ data }) => {
-        setBrands(dedupe(data || [], 'vehicle_make'))
-        setLoading(false)
-      })
+    supabase.from('parts_library').select('vehicle_make').then(({ data }) => {
+      if (!data) return
+      const counts = {}
+      for (const row of data) {
+        const m = row.vehicle_make
+        if (m) counts[m] = (counts[m] || 0) + 1
+      }
+      setBrands(
+        Object.entries(counts)
+          .map(([make, count]) => ({ make, count }))
+          .sort((a, b) => a.make.localeCompare(b.make))
+      )
+    })
   }, [])
 
-  // Step 2 — fetch vehicles when make is selected
+  // Autofocus on view change
   useEffect(() => {
-    if (!selectedMake) return
-    setLoading(true)
-    supabase
-      .from('parts_library')
-      .select('vehicle_text')
-      .eq('vehicle_make', selectedMake)
-      .order('vehicle_text')
-      .then(({ data }) => {
-        setVehicles(dedupe(data || [], 'vehicle_text'))
-        setLoading(false)
-      })
-  }, [selectedMake])
+    if (view === 'home')   setTimeout(() => homeInputRef.current?.focus(),   50)
+    if (view === 'search') setTimeout(() => searchInputRef.current?.focus(), 50)
+  }, [view])
 
-  // Step 3 — fetch categories when vehicle is selected
+  // Step 2: vehicles for make
   useEffect(() => {
-    if (!selectedVehicle) return
+    if (view !== 'step2' || !selectedMake) return
     setLoading(true)
-    supabase
-      .from('parts_library')
-      .select('category')
-      .eq('vehicle_text', selectedVehicle)
-      .order('category')
-      .then(({ data }) => {
-        const rows = data || []
-        const countMap = {}
-        for (const row of rows) {
-          const c = row.category
-          if (c) countMap[c] = (countMap[c] || 0) + 1
-        }
-        const cats = Object.entries(countMap).map(([name, count]) => ({ name, count }))
-        cats.sort((a, b) => a.name.localeCompare(b.name))
-        setCategories(cats)
-        setLoading(false)
-      })
-  }, [selectedVehicle])
+    supabase.from('parts_library').select('vehicle_text')
+      .eq('vehicle_make', selectedMake).order('vehicle_text')
+      .then(({ data }) => { setVehicles(dedupe(data, 'vehicle_text')); setLoading(false) })
+  }, [view, selectedMake])
 
-  // Step 4 — fetch parts when category is selected
+  // Step 3: categories for vehicle (including general)
   useEffect(() => {
-    if (!selectedVehicle || !selectedCategory) return
+    if (view !== 'step3' || !selectedVehicle) return
     setLoading(true)
-    supabase
-      .from('parts_library')
-      .select('*')
-      .eq('vehicle_text', selectedVehicle)
-      .eq('category', selectedCategory)
-      .order('part_name')
-      .then(({ data }) => {
-        setParts(data || [])
-        setLoading(false)
+    Promise.all([
+      supabase.from('parts_library').select('category').ilike('vehicle_text', `%${selectedVehicle}%`),
+      supabase.from('parts_library').select('category')
+        .or('vehicle_make.eq.General,vehicle_text.ilike.%general%,vehicle_text.ilike.%通用%'),
+    ]).then(([vRes, gRes]) => {
+      const counts = {}
+      for (const row of [...(vRes.data || []), ...(gRes.data || [])]) {
+        if (row.category) counts[row.category] = (counts[row.category] || 0) + 1
+      }
+      const cats = Object.entries(counts).map(([name, count]) => ({ name, count }))
+      cats.sort((a, b) => {
+        const ia = CATEGORY_ORDER.indexOf(a.name)
+        const ib = CATEGORY_ORDER.indexOf(b.name)
+        if (ia !== -1 && ib !== -1) return ia - ib
+        if (ia !== -1) return -1
+        if (ib !== -1) return 1
+        return a.name.localeCompare(b.name)
       })
-  }, [selectedVehicle, selectedCategory])
+      setCategories(cats)
+      setLoading(false)
+    })
+  }, [view, selectedVehicle])
 
-  // Navigation handlers
-  const goToStep1 = () => {
-    setStep(1)
+  // Results: exact + general parts
+  useEffect(() => {
+    if (view !== 'results' || !selectedVehicle || !selectedCategory) return
+    setLoading(true)
+    Promise.all([
+      supabase.from('parts_library').select('*')
+        .ilike('vehicle_text', `%${selectedVehicle}%`)
+        .eq('category', selectedCategory)
+        .not('vehicle_make', 'eq', 'General')
+        .order('part_name'),
+      supabase.from('parts_library').select('*')
+        .or('vehicle_make.eq.General,vehicle_text.ilike.%general%,vehicle_text.ilike.%通用%')
+        .eq('category', selectedCategory)
+        .order('part_name'),
+    ]).then(([eRes, gRes]) => {
+      setExactParts(eRes.data || [])
+      setGeneralParts(gRes.data || [])
+      setLoading(false)
+      if (selectedMake && selectedVehicle && selectedCategory) {
+        saveRecent({ make: selectedMake, vehicle: selectedVehicle, category: selectedCategory })
+        setRecent(getRecent())
+      }
+    })
+  }, [view, selectedVehicle, selectedCategory, selectedMake])
+
+  // Search with 300ms debounce
+  useEffect(() => {
+    if (view !== 'search' || !searchQ.trim()) {
+      setSearchResults([])
+      return
+    }
+    const timer = setTimeout(() => {
+      setLoading(true)
+      const words = searchQ.trim().toLowerCase().split(/\s+/).filter(Boolean)
+      supabase.from('parts_library').select('*')
+        .or(`part_name.ilike.%${words[0]}%,vehicle_text.ilike.%${words[0]}%`)
+        .order('vehicle_text').order('part_name')
+        .limit(200)
+        .then(({ data }) => {
+          const filtered = (data || []).filter(part => {
+            const hay = `${part.part_name || ''} ${part.vehicle_text || ''} ${part.vehicle_make || ''}`.toLowerCase()
+            return words.every(w => hay.includes(w))
+          })
+          const grouped = {}
+          for (const part of filtered) {
+            const key = part.vehicle_text || 'Unknown'
+            if (!grouped[key]) grouped[key] = []
+            grouped[key].push(part)
+          }
+          setSearchResults(Object.entries(grouped).map(([vehicle, parts]) => ({ vehicle, parts })))
+          setLoading(false)
+        })
+    }, 300)
+    return () => clearTimeout(timer)
+  }, [view, searchQ])
+
+  // Navigation
+  const goHome = useCallback(() => {
+    setView('home')
     setSelectedMake(null)
     setSelectedVehicle(null)
     setSelectedCategory(null)
-  }
+  }, [])
 
-  const goToStep2 = () => {
-    setStep(2)
-    setSelectedVehicle(null)
-    setSelectedCategory(null)
-  }
-
-  const goToStep3 = () => {
-    setStep(3)
-    setSelectedCategory(null)
-  }
-
-  const selectMake = (make) => {
+  const selectMake = (make, origin = 'step1') => {
     setSelectedMake(make)
     setSelectedVehicle(null)
     setSelectedCategory(null)
-    setStep(2)
+    setDrillOrigin(origin)
+    setView('step2')
   }
 
   const selectVehicle = (vehicle) => {
     setSelectedVehicle(vehicle)
     setSelectedCategory(null)
-    setStep(3)
+    setView('step3')
   }
 
   const selectCategory = (category) => {
     setSelectedCategory(category)
-    setStep(4)
+    setView('results')
+  }
+
+  const loadRecent = (entry) => {
+    setSelectedMake(entry.make)
+    setSelectedVehicle(entry.vehicle)
+    setSelectedCategory(entry.category)
+    setView('results')
   }
 
   const handleSave = async (formData) => {
@@ -565,123 +720,287 @@ export default function Parts() {
     if (modal.mode === 'add') {
       const { data, error } = await addPart(formData)
       if (error) { alert(error.message); setSaving(false); return }
-      if (step === 4 && data) {
-        setParts(ps => [...ps, data].sort((a, b) => a.part_name.localeCompare(b.part_name)))
+      if (view === 'results' && data) {
+        if (isGeneral(data)) setGeneralParts(ps => [...ps, data].sort((a, b) => a.part_name.localeCompare(b.part_name)))
+        else                 setExactParts(ps => [...ps, data].sort((a, b) => a.part_name.localeCompare(b.part_name)))
       }
     } else {
       const { data, error } = await updatePart(modal.part.id, formData)
       if (error) { alert(error.message); setSaving(false); return }
-      if (step === 4 && data) {
-        setParts(ps => ps.map(p => p.id === modal.part.id ? data : p))
+      if (view === 'results' && data) {
+        setExactParts(ps => ps.map(p => p.id === modal.part.id ? data : p))
+        setGeneralParts(ps => ps.map(p => p.id === modal.part.id ? data : p))
       }
     }
     setSaving(false)
     setModal(null)
   }
 
-  // Header config per step
   const headerProps = (() => {
-    if (step === 1) return { title: 'Parts Lookup', subtitle: 'Select a brand', backLabel: null, onBack: null }
-    if (step === 2) return { title: selectedMake, subtitle: 'Select a vehicle', backLabel: selectedMake, onBack: goToStep1 }
-    if (step === 3) return { title: selectedVehicle, subtitle: 'Select a part category', backLabel: selectedMake, onBack: goToStep2 }
-    return { title: selectedCategory, subtitle: `${selectedMake} · ${selectedVehicle}`, backLabel: selectedVehicle, onBack: goToStep3 }
+    if (view === 'home')    return { title: 'Parts Lookup',     backLabel: null,             onBack: null }
+    if (view === 'step1')   return { title: 'All Brands',       backLabel: 'Parts',          onBack: goHome }
+    if (view === 'step2')   return { title: selectedMake,       backLabel: 'Parts',          onBack: drillOrigin === 'home' ? goHome : () => setView('step1') }
+    if (view === 'step3')   return { title: selectedVehicle,    backLabel: selectedMake,     onBack: () => setView('step2') }
+    if (view === 'results') return { title: selectedCategory,   backLabel: selectedVehicle,  onBack: () => setView('step3') }
+    if (view === 'search')  return { title: 'Search Results',   backLabel: 'Parts',          onBack: goHome }
+    return { title: 'Parts', backLabel: null, onBack: null }
   })()
 
-  const makesForModal = brands.length > 0 ? brands : []
+  const makesForModal = brands.map(b => b.make)
 
   return (
-    <div style={{
-      background: '#f5f5f7',
-      height: '100%',
-      overflow: 'auto',
-      fontFamily: '-apple-system, BlinkMacSystemFont, "SF Pro Display", "SF Pro Text", system-ui, sans-serif',
-    }}>
+    <div style={{ background: C.bg, minHeight: '100%', fontFamily: FONT }}>
 
-      <StepHeader
+      <PageHeader
         title={headerProps.title}
         backLabel={headerProps.backLabel}
         onBack={headerProps.onBack}
         onAdd={() => setModal({ mode: 'add', part: null })}
       />
 
-      <PageSubtitle text={headerProps.subtitle} />
+      {/* ── HOME ─────────────────────────────────────────────────────────── */}
+      {view === 'home' && (
+        <div>
+          <div style={{ padding: '16px 16px 8px' }}>
+            <input
+              ref={homeInputRef}
+              type="search"
+              value={searchQ}
+              onChange={e => {
+                const q = e.target.value
+                setSearchQ(q)
+                if (q.trim()) setView('search')
+              }}
+              placeholder='Search vehicle or part... e.g. "Vezel Gearbox"'
+              autoFocus
+              style={{
+                width: '100%', boxSizing: 'border-box',
+                height: 48, padding: '0 16px',
+                border: `1px solid ${C.line}`,
+                borderRadius: 10, fontSize: 16,
+                color: C.ink, background: C.canvas,
+                outline: 'none', fontFamily: FONT,
+              }}
+            />
+          </div>
 
-      {/* Step 1 — Brands */}
-      {step === 1 && (
-        loading ? <LoadingView /> : brands.length === 0 ? <EmptyView message="No brands found" /> : (
-          <ListCard>
-            {brands.map((brand, i) => (
-              <div key={brand} style={{ borderBottom: i < brands.length - 1 ? '1px solid #e0e0e0' : 'none' }}>
-                <ListRow
-                  primary={brand}
-                  chevron
-                  onClick={() => selectMake(brand)}
-                />
-              </div>
+          {/* Brand shortcuts */}
+          <div style={{
+            overflowX: 'auto', padding: '8px 16px 12px',
+            display: 'flex', gap: 8, scrollbarWidth: 'none',
+          }}>
+            {BRAND_SHORTCUTS.map(brand => (
+              <button
+                key={brand}
+                onClick={() => selectMake(brand, 'home')}
+                style={{
+                  flexShrink: 0, padding: '8px 14px',
+                  background: C.canvas, border: `1px solid ${C.line}`,
+                  borderRadius: 8, fontSize: 13, fontWeight: 500,
+                  color: C.charcoal, cursor: 'pointer', fontFamily: FONT,
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {brand}
+              </button>
             ))}
-          </ListCard>
-        )
+            <button
+              onClick={() => setView('step1')}
+              style={{
+                flexShrink: 0, padding: '8px 14px',
+                background: C.bg, border: `1px solid ${C.line}`,
+                borderRadius: 8, fontSize: 13, fontWeight: 500,
+                color: C.slate, cursor: 'pointer', fontFamily: FONT,
+                whiteSpace: 'nowrap',
+              }}
+            >
+              All Brands
+            </button>
+          </div>
+
+          {/* Recent queries */}
+          {recent.length > 0 && (
+            <div style={{ padding: '0 16px 24px' }}>
+              <SectionLabel text="Recent" />
+              <SectionCard>
+                {recent.map((entry, i) => (
+                  <ListItem
+                    key={entry.timestamp}
+                    primary={`${entry.vehicle} · ${entry.category}`}
+                    secondary={entry.make}
+                    last={i === recent.length - 1}
+                    onClick={() => loadRecent(entry)}
+                  />
+                ))}
+              </SectionCard>
+            </div>
+          )}
+        </div>
       )}
 
-      {/* Step 2 — Vehicles */}
-      {step === 2 && (
-        loading ? <LoadingView /> : vehicles.length === 0 ? <EmptyView message="No vehicles found" /> : (
-          <ListCard>
-            {vehicles.map((vehicle, i) => (
-              <div key={vehicle} style={{ borderBottom: i < vehicles.length - 1 ? '1px solid #e0e0e0' : 'none' }}>
-                <ListRow
-                  primary={vehicle}
-                  chevron
-                  onClick={() => selectVehicle(vehicle)}
+      {/* ── ALL BRANDS ───────────────────────────────────────────────────── */}
+      {view === 'step1' && (
+        <div style={{ padding: '16px' }}>
+          {loading ? <Spinner /> : brands.length === 0 ? <EmptyState message="No brands found" /> : (
+            <SectionCard>
+              {brands.map((b, i) => (
+                <ListItem
+                  key={b.make}
+                  primary={b.make}
+                  right={<CountBadge count={b.count} />}
+                  last={i === brands.length - 1}
+                  onClick={() => selectMake(b.make, 'step1')}
                 />
-              </div>
-            ))}
-          </ListCard>
-        )
+              ))}
+            </SectionCard>
+          )}
+        </div>
       )}
 
-      {/* Step 3 — Categories */}
-      {step === 3 && (
-        loading ? <LoadingView /> : categories.length === 0 ? <EmptyView message="No categories found" /> : (
-          <ListCard>
-            {categories.map((cat, i) => (
-              <div key={cat.name} style={{ borderBottom: i < categories.length - 1 ? '1px solid #e0e0e0' : 'none' }}>
-                <ListRow
+      {/* ── VEHICLES ─────────────────────────────────────────────────────── */}
+      {view === 'step2' && (
+        <div style={{ padding: '16px' }}>
+          {loading ? <Spinner /> : vehicles.length === 0 ? <EmptyState message="No vehicles found" /> : (
+            <SectionCard>
+              {vehicles.map((v, i) => (
+                <ListItem
+                  key={v}
+                  primary={v}
+                  last={i === vehicles.length - 1}
+                  onClick={() => selectVehicle(v)}
+                />
+              ))}
+            </SectionCard>
+          )}
+        </div>
+      )}
+
+      {/* ── CATEGORIES ───────────────────────────────────────────────────── */}
+      {view === 'step3' && (
+        <div style={{ padding: '16px' }}>
+          {loading ? <Spinner /> : categories.length === 0 ? <EmptyState message="No categories found" /> : (
+            <SectionCard>
+              {categories.map((cat, i) => (
+                <ListItem
+                  key={cat.name}
                   primary={cat.name}
-                  badge={cat.count}
-                  chevron
+                  right={<CountBadge count={cat.count} />}
+                  last={i === categories.length - 1}
                   onClick={() => selectCategory(cat.name)}
                 />
-              </div>
-            ))}
-          </ListCard>
-        )
+              ))}
+            </SectionCard>
+          )}
+        </div>
       )}
 
-      {/* Step 4 — Parts */}
-      {step === 4 && (
-        loading ? <LoadingView /> : parts.length === 0 ? <EmptyView message="No parts found" /> : (
-          <ListCard>
-            {parts.map((part, i) => {
-              const priceStr = fmtPrice(part)
-              return (
-                <div key={part.id} style={{ borderBottom: i < parts.length - 1 ? '1px solid #e0e0e0' : 'none' }}>
-                  <ListRow
-                    primary={part.part_name}
-                    secondary={part.notes || null}
-                    price={priceStr || 'TBC'}
-                  />
+      {/* ── RESULTS ──────────────────────────────────────────────────────── */}
+      {view === 'results' && (
+        <div style={{ padding: '16px' }}>
+          <div style={{ fontSize: 13, color: C.steel, marginBottom: 16, fontFamily: FONT }}>
+            {selectedMake} · {selectedVehicle} · {selectedCategory}
+          </div>
+
+          {loading ? <Spinner /> : (exactParts.length === 0 && generalParts.length === 0) ? (
+            <EmptyState message="No parts found for this combination" />
+          ) : (
+            <>
+              {exactParts.length > 0 && (
+                <div style={{ marginBottom: 16 }}>
+                  <SectionLabel text={`${selectedVehicle} — ${exactParts.length} part${exactParts.length !== 1 ? 's' : ''}`} />
+                  <SectionCard>
+                    {exactParts.map((part, i) => (
+                      <PartCard
+                        key={part.id}
+                        part={part}
+                        vehicle={selectedVehicle}
+                        last={i === exactParts.length - 1}
+                        onEdit={p => setModal({ mode: 'edit', part: p })}
+                      />
+                    ))}
+                  </SectionCard>
                 </div>
-              )
-            })}
-          </ListCard>
-        )
+              )}
+              {generalParts.length > 0 && (
+                <div>
+                  <SectionLabel text={`General Parts — ${generalParts.length} part${generalParts.length !== 1 ? 's' : ''}`} />
+                  <SectionCard>
+                    {generalParts.map((part, i) => (
+                      <PartCard
+                        key={part.id}
+                        part={part}
+                        vehicle="General"
+                        last={i === generalParts.length - 1}
+                        onEdit={p => setModal({ mode: 'edit', part: p })}
+                      />
+                    ))}
+                  </SectionCard>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      )}
+
+      {/* ── SEARCH RESULTS ───────────────────────────────────────────────── */}
+      {view === 'search' && (
+        <div>
+          <div style={{
+            padding: '12px 16px',
+            background: C.canvas,
+            borderBottom: `1px solid ${C.line}`,
+          }}>
+            <input
+              ref={searchInputRef}
+              type="search"
+              value={searchQ}
+              onChange={e => {
+                const q = e.target.value
+                setSearchQ(q)
+                if (!q.trim()) goHome()
+              }}
+              placeholder='Search vehicle or part...'
+              style={{
+                width: '100%', boxSizing: 'border-box',
+                height: 44, padding: '0 14px',
+                border: `1px solid ${C.line}`,
+                borderRadius: 8, fontSize: 15,
+                color: C.ink, background: C.bg,
+                outline: 'none', fontFamily: FONT,
+              }}
+            />
+          </div>
+
+          <div style={{ padding: '16px' }}>
+            {loading ? <Spinner /> : searchResults.length === 0 ? (
+              searchQ.trim() ? <EmptyState message={`No parts found for "${searchQ}"`} /> : null
+            ) : (
+              searchResults.map(({ vehicle, parts }) => (
+                <div key={vehicle} style={{ marginBottom: 16 }}>
+                  <SectionLabel text={vehicle} />
+                  <SectionCard>
+                    {parts.map((part, i) => (
+                      <PartCard
+                        key={part.id}
+                        part={part}
+                        vehicle={vehicle}
+                        last={i === parts.length - 1}
+                        onEdit={p => setModal({ mode: 'edit', part: p })}
+                      />
+                    ))}
+                  </SectionCard>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
       )}
 
       {modal && (
-        <PartModal
+        <AddPartModal
           part={modal.part}
-          mode={modal.mode}
+          contextVehicle={selectedVehicle}
+          contextMake={selectedMake}
           makes={makesForModal}
           onClose={() => setModal(null)}
           onSave={handleSave}
