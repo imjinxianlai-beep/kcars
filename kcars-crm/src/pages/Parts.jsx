@@ -740,15 +740,22 @@ export default function Parts() {
     const timer = setTimeout(() => {
       setLoading(true)
       const words = searchQ.trim().toLowerCase().split(/\s+/).filter(Boolean)
+      // Build OR across every word × every field so multi-word queries like
+      // "toyota wish" cast a wide net even when words live in different columns.
+      const orClauses = words.flatMap(w =>
+        [`part_name.ilike.%${w}%`, `vehicle_text.ilike.%${w}%`, `vehicle_make.ilike.%${w}%`]
+      ).join(',')
       supabase.from('parts_library').select('*')
-        .or(`part_name.ilike.%${words[0]}%,vehicle_text.ilike.%${words[0]}%,vehicle_make.ilike.%${words[0]}%`)
+        .or(orClauses)
         .order('vehicle_text').order('part_name')
-        .limit(200)
+        .limit(500)
         .then(({ data }) => {
+          console.log('[Parts search] DB returned:', (data || []).length, 'rows for query:', searchQ)
           const filtered = (data || []).filter(part => {
             const hay = `${part.part_name || ''} ${part.vehicle_text || ''} ${part.vehicle_make || ''}`.toLowerCase()
             return words.every(w => hay.includes(w))
           })
+          console.log('[Parts search] After client filter:', filtered.length, 'rows')
           const grouped = {}
           for (const part of filtered) {
             const key = part.vehicle_text || 'Unknown'
