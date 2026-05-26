@@ -740,11 +740,11 @@ export default function Parts() {
     const timer = setTimeout(() => {
       setLoading(true)
       const words = searchQ.trim().toLowerCase().split(/\s+/).filter(Boolean)
-      // Build OR across every word × every field so multi-word queries like
-      // "toyota wish" cast a wide net even when words live in different columns.
-      const orClauses = words.flatMap(w =>
-        [`part_name.ilike.%${w}%`, `vehicle_text.ilike.%${w}%`, `vehicle_make.ilike.%${w}%`]
-      ).join(',')
+      const orClauses = [
+        `part_name.ilike.%${words[0]}%`,
+        `vehicle_text.ilike.%${words[0]}%`,
+        `vehicle_make.ilike.%${words[0]}%`,
+      ].join(',')
       supabase.from('parts_library').select('*')
         .or(orClauses)
         .order('vehicle_text').order('part_name')
@@ -752,7 +752,7 @@ export default function Parts() {
         .then(({ data }) => {
           console.log('[Parts search] DB returned:', (data || []).length, 'rows for query:', searchQ)
           const filtered = (data || []).filter(part => {
-            const hay = `${part.part_name || ''} ${part.vehicle_text || ''} ${part.vehicle_make || ''}`.toLowerCase()
+            const hay = [part.part_name || '', part.vehicle_text || '', part.vehicle_make || ''].join(' ').toLowerCase()
             return words.every(w => hay.includes(w))
           })
           console.log('[Parts search] After client filter:', filtered.length, 'rows')
@@ -839,7 +839,7 @@ export default function Parts() {
   const makesForModal = brands.map(b => b.make)
 
   return (
-    <div style={{ background: C.bg, minHeight: '100%', fontFamily: FONT }}>
+    <div style={{ background: C.bg, height: '100%', overflowY: 'auto', fontFamily: FONT }}>
 
       <PageHeader
         title={headerProps.title}
