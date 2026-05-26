@@ -740,20 +740,17 @@ export default function Parts() {
     const timer = setTimeout(() => {
       setLoading(true)
       const words = searchQ.trim().toLowerCase().split(/\s+/).filter(Boolean)
-      const orClauses = [
-        `part_name.ilike.%${words[0]}%`,
-        `vehicle_text.ilike.%${words[0]}%`,
-        `vehicle_make.ilike.%${words[0]}%`,
-      ].join(',')
+      const word0 = words[0]
+      const rest  = words.slice(1)
       supabase.from('parts_library').select('*')
-        .or(orClauses)
+        .or(`vehicle_make.ilike.%${word0}%,part_name.ilike.%${word0}%,vehicle_text.ilike.%${word0}%`)
         .order('vehicle_text').order('part_name')
-        .limit(500)
+        .limit(1000)
         .then(({ data }) => {
           console.log('[Parts search] DB returned:', (data || []).length, 'rows for query:', searchQ)
           const filtered = (data || []).filter(part => {
             const hay = [part.part_name || '', part.vehicle_text || '', part.vehicle_make || ''].join(' ').toLowerCase()
-            return words.every(w => hay.includes(w))
+            return rest.every(w => hay.includes(w))
           })
           console.log('[Parts search] After client filter:', filtered.length, 'rows')
           const grouped = {}
