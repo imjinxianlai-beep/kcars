@@ -741,7 +741,7 @@ export default function Parts() {
       setLoading(true)
       const words = searchQ.trim().toLowerCase().split(/\s+/).filter(Boolean)
       supabase.from('parts_library').select('*')
-        .or(`part_name.ilike.%${words[0]}%,vehicle_text.ilike.%${words[0]}%`)
+        .or(`part_name.ilike.%${words[0]}%,vehicle_text.ilike.%${words[0]}%,vehicle_make.ilike.%${words[0]}%`)
         .order('vehicle_text').order('part_name')
         .limit(200)
         .then(({ data }) => {
