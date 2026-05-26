@@ -739,22 +739,14 @@ export default function Parts() {
     }
     const timer = setTimeout(() => {
       setLoading(true)
-      const words = searchQ.trim().toLowerCase().split(/\s+/).filter(Boolean)
-      const word0 = words[0]
-      const rest  = words.slice(1)
+      const q = searchQ.trim()
       supabase.from('parts_library').select('*')
-        .or(`vehicle_make.ilike.%${word0}%,part_name.ilike.%${word0}%,vehicle_text.ilike.%${word0}%`)
+        .or(`vehicle_text.ilike.%${q}%,vehicle_make.ilike.%${q}%,part_name.ilike.%${q}%`)
         .order('vehicle_text').order('part_name')
-        .limit(1000)
+        .limit(200)
         .then(({ data }) => {
-          console.log('[Parts search] DB returned:', (data || []).length, 'rows for query:', searchQ)
-          const filtered = (data || []).filter(part => {
-            const hay = [part.part_name || '', part.vehicle_text || '', part.vehicle_make || ''].join(' ').toLowerCase()
-            return rest.every(w => hay.includes(w))
-          })
-          console.log('[Parts search] After client filter:', filtered.length, 'rows')
           const grouped = {}
-          for (const part of filtered) {
+          for (const part of (data || [])) {
             const key = part.vehicle_text || 'Unknown'
             if (!grouped[key]) grouped[key] = []
             grouped[key].push(part)
