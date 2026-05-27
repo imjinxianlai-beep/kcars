@@ -141,6 +141,15 @@ function fmtDate(value) {
   return String(value).slice(0, 10)
 }
 
+function sanitizeSearchQuery(value) {
+  return String(value || '')
+    .trim()
+    .replace(/[%,()]/g, ' ')
+    .replace(/_/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+}
+
 // ── Spinner ───────────────────────────────────────────────────────────────────
 function Spinner() {
   return (
@@ -748,13 +757,15 @@ export default function Parts() {
 
   const [loading,         setLoading]         = useState(false)
   const [searchQ,         setSearchQ]         = useState('')
+  const [searchError,     setSearchError]     = useState('')
   const [recent,          setRecent]          = useState(getRecent)
   const [modal,           setModal]           = useState(null)
   const [saving,          setSaving]          = useState(false)
   const [latestPriceMap,  setLatestPriceMap]  = useState({})
 
-  const homeInputRef   = useRef(null)
-  const searchInputRef = useRef(null)
+  const homeInputRef      = useRef(null)
+  const searchInputRef    = useRef(null)
+  const latestSearchTsRef = useRef(0)
 
   const loadLatestPrices = useCallback(async (partsList) => {
     const ids = [...new Set((partsList || []).map(p => p.id).filter(Boolean))]
@@ -861,18 +872,35 @@ export default function Parts() {
 
   // Search with 300ms debounce
   useEffect(() => {
-    if (view !== 'search' || !searchQ.trim()) {
+    const safeQ = sanitizeSearchQuery(searchQ)
+    if (view !== 'search' || !safeQ) {
       setSearchResults([])
+      setSearchError('')
       return
     }
     const timer = setTimeout(() => {
+      const ts = Date.now()
+      latestSearchTsRef.current = ts
       setLoading(true)
-      const q = searchQ.trim()
+      setSearchError('')
+      const orFilter = [
+        `vehicle_text.ilike.%${safeQ}%`,
+        `vehicle_make.ilike.%${safeQ}%`,
+        `vehicle_model.ilike.%${safeQ}%`,
+        `part_name.ilike.%${safeQ}%`,
+      ].join(',')
       supabase.from('parts_library').select('*')
-        .or(`vehicle_text.ilike.%${q}%,vehicle_make.ilike.%${q}%,part_name.ilike.%${q}%`)
+        .or(orFilter)
         .order('vehicle_text').order('part_name')
         .limit(200)
-        .then(({ data }) => {
+        .then(({ data, error }) => {
+          if (latestSearchTsRef.current !== ts) return
+          if (error) {
+            setSearchError('Search failed, please try again')
+            setSearchResults([])
+            setLoading(false)
+            return
+          }
           const rows = data || []
           loadLatestPrices(rows)
           const grouped = {}
@@ -884,9 +912,15 @@ export default function Parts() {
           setSearchResults(Object.entries(grouped).map(([vehicle, parts]) => ({ vehicle, parts })))
           setLoading(false)
         })
+        .catch(() => {
+          if (latestSearchTsRef.current !== ts) return
+          setSearchError('Search failed, please try again')
+          setSearchResults([])
+          setLoading(false)
+        })
     }, 300)
     return () => clearTimeout(timer)
-  }, [view, searchQ])
+  }, [view, searchQ, loadLatestPrices])
 
   // Navigation
   const goHome = useCallback(() => {
@@ -1183,7 +1217,11 @@ export default function Parts() {
           </div>
 
           <div style={{ padding: '16px' }}>
-            {loading ? <Spinner /> : searchResults.length === 0 ? (
+            {loading ? <Spinner /> : searchError ? (
+              <div style={{ fontSize: 13, color: C.error, padding: '24px 4px', fontFamily: FONT }}>
+                {searchError}
+              </div>
+            ) : searchResults.length === 0 ? (
               searchQ.trim() ? <EmptyState message={`No parts found for "${searchQ}"`} /> : null
             ) : (
               searchResults.map(({ vehicle, parts }) => (
