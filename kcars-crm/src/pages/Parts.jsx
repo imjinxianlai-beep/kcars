@@ -328,7 +328,7 @@ function PartCard({ part, vehicle, last, onEdit, latestPrice }) {
   const priceDisplay = !priceOpts ? (
     latestHistoryPrice ? (
       <span style={{ fontSize: 14, fontWeight: 500, color: 'var(--orange)', fontFeatureSettings: '"tnum"', fontFamily: FONT }}>
-        Last {fmtMoney(latestHistoryPrice)}
+        Recent {fmtMoney(latestHistoryPrice)}
       </span>
     ) : (
       <span style={{ fontSize: 13, color: C.steel, fontFamily: FONT }}>TBC</span>
