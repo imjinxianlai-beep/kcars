@@ -286,7 +286,7 @@ function ListItem({ primary, secondary, right, onClick, last }) {
 }
 
 // ── PartCard ──────────────────────────────────────────────────────────────────
-function PartCard({ part, vehicle, last, onEdit }) {
+function PartCard({ part, vehicle, last, onEdit, latestPrice }) {
   const [open,          setOpen]          = useState(false)
   const [copied,        setCopied]        = useState(false)
   const [historySummary, setHistorySummary] = useState(null)   // null=unfetched, false=no row, object=data
@@ -321,8 +321,18 @@ function PartCard({ part, vehicle, last, onEdit }) {
     }
   }
 
+  const latestHistoryPrice =
+    latestPrice?.amount ??
+    (recentPrices && recentPrices.length > 0 ? recentPrices[0].amount : null)
+
   const priceDisplay = !priceOpts ? (
-    <span style={{ fontSize: 13, color: C.steel, fontFamily: FONT }}>TBC</span>
+    latestHistoryPrice ? (
+      <span style={{ fontSize: 14, fontWeight: 500, color: 'var(--orange)', fontFeatureSettings: '"tnum"', fontFamily: FONT }}>
+        Last {fmtMoney(latestHistoryPrice)}
+      </span>
+    ) : (
+      <span style={{ fontSize: 13, color: C.steel, fontFamily: FONT }}>TBC</span>
+    )
   ) : hasMulti ? (
     <span style={{ fontSize: 14, fontWeight: 500, color: 'var(--orange)', fontFeatureSettings: '"tnum"', fontFamily: FONT }}>
       from {priceOpts[0].amount}
@@ -736,14 +746,29 @@ export default function Parts() {
   const [generalParts,  setGeneralParts]  = useState([])
   const [searchResults, setSearchResults] = useState([])
 
-  const [loading, setLoading] = useState(false)
-  const [searchQ, setSearchQ] = useState('')
-  const [recent,  setRecent]  = useState(getRecent)
-  const [modal,   setModal]   = useState(null)
-  const [saving,  setSaving]  = useState(false)
+  const [loading,         setLoading]         = useState(false)
+  const [searchQ,         setSearchQ]         = useState('')
+  const [recent,          setRecent]          = useState(getRecent)
+  const [modal,           setModal]           = useState(null)
+  const [saving,          setSaving]          = useState(false)
+  const [latestPriceMap,  setLatestPriceMap]  = useState({})
 
   const homeInputRef   = useRef(null)
   const searchInputRef = useRef(null)
+
+  const loadLatestPrices = useCallback(async (partsList) => {
+    const ids = [...new Set((partsList || []).map(p => p.id).filter(Boolean))]
+    if (ids.length === 0) return
+    const { data, error } = await supabase
+      .from('part_price_recent')
+      .select('part_id, amount, date, invoice_no, car_make, car_model')
+      .in('part_id', ids)
+      .eq('rn', 1)
+    if (error) { console.warn('[Parts] Failed to load latest prices', error); return }
+    const next = {}
+    for (const row of data || []) next[row.part_id] = row
+    setLatestPriceMap(prev => ({ ...prev, ...next }))
+  }, [])
 
   // Fetch brand counts on mount
   useEffect(() => {
@@ -821,8 +846,11 @@ export default function Parts() {
         .ilike('category', catLabel)
         .order('part_name'),
     ]).then(([eRes, gRes]) => {
-      setExactParts(eRes.data || [])
-      setGeneralParts(gRes.data || [])
+      const exact   = eRes.data || []
+      const general = gRes.data || []
+      setExactParts(exact)
+      setGeneralParts(general)
+      loadLatestPrices([...exact, ...general])
       setLoading(false)
       if (selectedMake && selectedVehicle && selectedCategory) {
         saveRecent({ make: selectedMake, vehicle: selectedVehicle, category: selectedCategory })
@@ -845,8 +873,10 @@ export default function Parts() {
         .order('vehicle_text').order('part_name')
         .limit(200)
         .then(({ data }) => {
+          const rows = data || []
+          loadLatestPrices(rows)
           const grouped = {}
-          for (const part of (data || [])) {
+          for (const part of rows) {
             const key = part.vehicle_text || 'Unknown'
             if (!grouped[key]) grouped[key] = []
             grouped[key].push(part)
@@ -1095,6 +1125,7 @@ export default function Parts() {
                         vehicle={selectedVehicle}
                         last={i === exactParts.length - 1}
                         onEdit={p => setModal({ mode: 'edit', part: p })}
+                        latestPrice={latestPriceMap[part.id]}
                       />
                     ))}
                   </SectionCard>
@@ -1111,6 +1142,7 @@ export default function Parts() {
                         vehicle="General"
                         last={i === generalParts.length - 1}
                         onEdit={p => setModal({ mode: 'edit', part: p })}
+                        latestPrice={latestPriceMap[part.id]}
                       />
                     ))}
                   </SectionCard>
@@ -1165,6 +1197,7 @@ export default function Parts() {
                         vehicle={vehicle}
                         last={i === parts.length - 1}
                         onEdit={p => setModal({ mode: 'edit', part: p })}
+                        latestPrice={latestPriceMap[part.id]}
                       />
                     ))}
                   </SectionCard>
