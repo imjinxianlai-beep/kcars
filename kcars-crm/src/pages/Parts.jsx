@@ -277,10 +277,9 @@ function ListItem({ primary, secondary, right, onClick, last }) {
 
 // ── PartCard ──────────────────────────────────────────────────────────────────
 function PartCard({ part, vehicle, last, onEdit }) {
-  const [open,           setOpen]          = useState(false)
-  const [copied,         setCopied]        = useState(false)
-  const [history,        setHistory]       = useState(null)  // null = not yet fetched
-  const [historyLoading, setHistoryLoading] = useState(false)
+  const [open,    setOpen]    = useState(false)
+  const [copied,  setCopied]  = useState(false)
+  const [history, setHistory] = useState(null)  // null = unfetched, false = no data, object = data
 
   const priceOpts = parsePriceOptions(part)
   const warranty  = parseWarranty(part.notes)
@@ -290,14 +289,8 @@ function PartCard({ part, vehicle, last, onEdit }) {
     const opening = !open
     setOpen(opening)
     if (opening && history === null) {
-      setHistoryLoading(true)
-      supabase.rpc('get_price_history', {
-        p_description:  part.part_name,
-        p_vehicle_make: part.vehicle_make === 'General' ? null : part.vehicle_make,
-      }).then(({ data }) => {
-        setHistory(data || [])
-        setHistoryLoading(false)
-      })
+      supabase.from('part_price_history').select('*').eq('part_id', part.id).single()
+        .then(({ data }) => setHistory(data || false))
     }
   }
 
@@ -322,10 +315,6 @@ function PartCard({ part, vehicle, last, onEdit }) {
       {priceOpts[0].label ? `${priceOpts[0].label} ` : ''}{priceOpts[0].amount}
     </span>
   )
-
-  const amounts = history && history.length > 0
-    ? history.map(h => Number(h.amount)).filter(n => !isNaN(n) && n > 0)
-    : []
 
   return (
     <div style={{ borderBottom: last ? 'none' : `1px solid ${C.lineSoft}` }}>
@@ -383,88 +372,36 @@ function PartCard({ part, vehicle, last, onEdit }) {
           )}
 
           {/* ── Price History ── */}
-          <div style={{ marginBottom: 14 }}>
-            <div style={{
-              fontSize: 11, fontWeight: 600, letterSpacing: 0.5,
-              color: C.steel, textTransform: 'uppercase', marginBottom: 8,
-            }}>
-              Price History
+          {history && (
+            <div style={{ marginBottom: 14 }}>
+              <div style={{
+                fontSize: 11, fontWeight: 600, letterSpacing: 0.5,
+                color: C.steel, textTransform: 'uppercase', marginBottom: 6,
+              }}>
+                Price History
+              </div>
+              <div style={{
+                background: C.canvas, borderRadius: 8, border: `1px solid ${C.line}`,
+                padding: '10px 14px', display: 'flex', flexDirection: 'column', gap: 5,
+              }}>
+                <div style={{ fontSize: 12, color: C.steel, fontFeatureSettings: '"tnum"' }}>
+                  {Number(history.history_count).toLocaleString()} jobs · Last: {String(history.last_sold_at || '').slice(0, 10)}
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span style={{ fontSize: 12, color: C.steel, width: 54, flexShrink: 0 }}>Range</span>
+                  <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--orange)', fontFeatureSettings: '"tnum"' }}>
+                    ${Math.round(history.min_price).toLocaleString()} — ${Math.round(history.max_price).toLocaleString()}
+                  </span>
+                </div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <span style={{ fontSize: 12, color: C.steel, width: 54, flexShrink: 0 }}>Average</span>
+                  <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--orange)', fontFeatureSettings: '"tnum"' }}>
+                    ${Math.round(history.avg_price).toLocaleString()}
+                  </span>
+                </div>
+              </div>
             </div>
-
-            {historyLoading ? (
-              <div style={{ display: 'flex', justifyContent: 'center', padding: '16px 0' }}>
-                <div className="spinner" style={{ width: 16, height: 16, borderWidth: 2 }} />
-              </div>
-            ) : history === null ? null : history.length === 0 ? (
-              <div style={{ fontSize: 13, color: C.steel }}>No price history found</div>
-            ) : (
-              <div style={{ background: C.canvas, borderRadius: 8, border: `1px solid ${C.line}`, overflow: 'hidden' }}>
-
-                {/* Most recent */}
-                {amounts.length > 0 && (
-                  <div style={{ padding: '12px 14px', borderBottom: `1px solid ${C.lineSoft}` }}>
-                    <div style={{ fontSize: 11, color: C.steel, fontWeight: 500, marginBottom: 4, textTransform: 'uppercase', letterSpacing: 0.4 }}>
-                      Most Recent
-                    </div>
-                    <div style={{ display: 'flex', alignItems: 'baseline', gap: 10 }}>
-                      <span style={{ fontSize: 20, fontWeight: 600, color: 'var(--orange)', fontFeatureSettings: '"tnum"' }}>
-                        ${amounts[0].toLocaleString()}
-                      </span>
-                      <span style={{ fontSize: 13, color: C.steel, fontFeatureSettings: '"tnum"' }}>
-                        {history[0].date}
-                      </span>
-                    </div>
-                  </div>
-                )}
-
-                {/* Stats row */}
-                {amounts.length > 1 && (
-                  <div style={{
-                    padding: '10px 14px', borderBottom: `1px solid ${C.lineSoft}`,
-                    display: 'flex', gap: 20, flexWrap: 'wrap',
-                  }}>
-                    {[
-                      ['Min',  `$${Math.min(...amounts).toLocaleString()}`],
-                      ['Max',  `$${Math.max(...amounts).toLocaleString()}`],
-                      ['Avg',  `$${Math.round(amounts.reduce((s, a) => s + a, 0) / amounts.length).toLocaleString()}`],
-                      [`${history.length} records`, ''],
-                    ].map(([label, val]) => (
-                      <div key={label} style={{ lineHeight: 1.3 }}>
-                        <div style={{ fontSize: 11, color: C.steel }}>{label}</div>
-                        {val && <div style={{ fontSize: 13, fontWeight: 500, color: C.charcoal, fontFeatureSettings: '"tnum"' }}>{val}</div>}
-                      </div>
-                    ))}
-                  </div>
-                )}
-
-                {/* History rows */}
-                {history.map((row, i) => {
-                  const veh = row.vehicle || [row.car_make, row.car_model].filter(Boolean).join(' ') || '—'
-                  const amt = Number(row.amount)
-                  return (
-                    <div key={i} style={{
-                      padding: '9px 14px',
-                      borderBottom: i < history.length - 1 ? `1px solid ${C.lineSoft}` : 'none',
-                      display: 'flex', alignItems: 'center', gap: 10,
-                    }}>
-                      <span style={{ fontSize: 12, color: C.steel, flexShrink: 0, fontFeatureSettings: '"tnum"', width: 82 }}>
-                        {row.date}
-                      </span>
-                      <span style={{ flex: 1, fontSize: 13, color: C.charcoal, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {veh}
-                      </span>
-                      <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--orange)', fontFeatureSettings: '"tnum"', flexShrink: 0 }}>
-                        {!isNaN(amt) && amt > 0 ? `$${amt.toLocaleString()}` : '—'}
-                      </span>
-                      <span style={{ fontSize: 11, color: C.muted, flexShrink: 0 }}>
-                        {row.invoice_no}
-                      </span>
-                    </div>
-                  )
-                })}
-              </div>
-            )}
-          </div>
+          )}
 
           <div style={{ display: 'flex', gap: 8 }}>
             <button
