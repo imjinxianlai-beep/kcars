@@ -131,6 +131,16 @@ function saveRecent(entry) {
   localStorage.setItem(RECENT_KEY, JSON.stringify(list.slice(0, 5)))
 }
 
+function fmtMoney(value) {
+  if (value == null || value === '') return 'TBC'
+  return `$${Math.round(Number(value)).toLocaleString()}`
+}
+
+function fmtDate(value) {
+  if (!value) return ''
+  return String(value).slice(0, 10)
+}
+
 // ── Spinner ───────────────────────────────────────────────────────────────────
 function Spinner() {
   return (
@@ -277,9 +287,10 @@ function ListItem({ primary, secondary, right, onClick, last }) {
 
 // ── PartCard ──────────────────────────────────────────────────────────────────
 function PartCard({ part, vehicle, last, onEdit }) {
-  const [open,    setOpen]    = useState(false)
-  const [copied,  setCopied]  = useState(false)
-  const [history, setHistory] = useState(null)  // null = unfetched, false = no data, object = data
+  const [open,          setOpen]          = useState(false)
+  const [copied,        setCopied]        = useState(false)
+  const [historySummary, setHistorySummary] = useState(null)   // null=unfetched, false=no row, object=data
+  const [recentPrices,   setRecentPrices]   = useState(null)   // null=unfetched, []=empty, array=data
 
   const priceOpts = parsePriceOptions(part)
   const warranty  = parseWarranty(part.notes)
@@ -288,9 +299,15 @@ function PartCard({ part, vehicle, last, onEdit }) {
   const toggle = () => {
     const opening = !open
     setOpen(opening)
-    if (opening && history === null) {
-      supabase.from('part_price_history').select('*').eq('part_id', part.id).single()
-        .then(({ data }) => setHistory(data || false))
+    if (opening && historySummary === null && recentPrices === null) {
+      Promise.all([
+        supabase.from('part_price_history').select('*').eq('part_id', part.id).maybeSingle(),
+        supabase.from('part_price_recent').select('*').eq('part_id', part.id)
+          .lte('rn', 5).order('date', { ascending: false }).order('invoice_no', { ascending: false }),
+      ]).then(([summaryRes, recentRes]) => {
+        setHistorySummary(summaryRes.data || false)
+        setRecentPrices(recentRes.data || [])
+      })
     }
   }
 
@@ -372,7 +389,7 @@ function PartCard({ part, vehicle, last, onEdit }) {
           )}
 
           {/* ── Price History ── */}
-          {history && (
+          {(historySummary || (recentPrices && recentPrices.length > 0)) && (
             <div style={{ marginBottom: 14 }}>
               <div style={{
                 fontSize: 11, fontWeight: 600, letterSpacing: 0.5,
@@ -380,25 +397,66 @@ function PartCard({ part, vehicle, last, onEdit }) {
               }}>
                 Price History
               </div>
+
               <div style={{
                 background: C.canvas, borderRadius: 8, border: `1px solid ${C.line}`,
-                padding: '10px 14px', display: 'flex', flexDirection: 'column', gap: 5,
+                padding: '10px 14px',
               }}>
-                <div style={{ fontSize: 12, color: C.steel, fontFeatureSettings: '"tnum"' }}>
-                  {Number(history.history_count).toLocaleString()} jobs · Last: {String(history.last_sold_at || '').slice(0, 10)}
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <span style={{ fontSize: 12, color: C.steel, width: 54, flexShrink: 0 }}>Range</span>
-                  <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--orange)', fontFeatureSettings: '"tnum"' }}>
-                    ${Math.round(history.min_price).toLocaleString()} — ${Math.round(history.max_price).toLocaleString()}
-                  </span>
-                </div>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <span style={{ fontSize: 12, color: C.steel, width: 54, flexShrink: 0 }}>Average</span>
-                  <span style={{ fontSize: 13, fontWeight: 500, color: 'var(--orange)', fontFeatureSettings: '"tnum"' }}>
-                    ${Math.round(history.avg_price).toLocaleString()}
-                  </span>
-                </div>
+                {recentPrices && recentPrices.length > 0 && (
+                  <>
+                    <div style={{ fontSize: 12, color: C.steel, fontFeatureSettings: '"tnum"', marginBottom: 10 }}>
+                      {historySummary?.history_count ? `${Number(historySummary.history_count).toLocaleString()} jobs · ` : ''}
+                      Last: {fmtDate(recentPrices[0].date)} · {fmtMoney(recentPrices[0].amount)}
+                    </div>
+
+                    <div style={{
+                      fontSize: 11, fontWeight: 600, color: C.steel,
+                      textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 6,
+                    }}>
+                      Recent Prices
+                    </div>
+
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 7, marginBottom: historySummary ? 10 : 0 }}>
+                      {recentPrices.slice(0, 5).map((row, i) => (
+                        <div key={`${row.invoice_no || ''}-${row.date || ''}-${i}`}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+                            <span style={{ fontSize: 13, color: C.charcoal, fontFeatureSettings: '"tnum"' }}>
+                              {fmtDate(row.date)}
+                            </span>
+                            <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--orange)', fontFeatureSettings: '"tnum"' }}>
+                              {fmtMoney(row.amount)}
+                            </span>
+                          </div>
+                          {(row.car_make || row.car_model || row.invoice_no) && (
+                            <div style={{ fontSize: 11, color: C.steel, marginTop: 1 }}>
+                              {[row.car_make, row.car_model].filter(Boolean).join(' ')}
+                              {row.invoice_no ? ` · ${row.invoice_no}` : ''}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
+
+                {historySummary && historySummary.min_price != null && historySummary.max_price != null && (
+                  <div style={{
+                    borderTop: recentPrices && recentPrices.length > 0 ? `1px solid ${C.lineSoft}` : 'none',
+                    paddingTop: recentPrices && recentPrices.length > 0 ? 10 : 0,
+                  }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12 }}>
+                      <span style={{ fontSize: 12, color: C.steel }}>Range</span>
+                      <span style={{ fontSize: 13, fontWeight: 500, color: C.charcoal, fontFeatureSettings: '"tnum"' }}>
+                        {fmtMoney(historySummary.min_price)} — {fmtMoney(historySummary.max_price)}
+                      </span>
+                    </div>
+                    {Number(historySummary.max_price) >= Number(historySummary.min_price) * 2 && (
+                      <div style={{ fontSize: 11, color: C.error, marginTop: 6, lineHeight: 1.4 }}>
+                        Price varies. Check recent jobs before quoting.
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
           )}
