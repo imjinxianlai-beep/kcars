@@ -204,10 +204,21 @@ export const getParts = ({ category } = {}) => {
   return q
 }
 
-export const searchParts = (query) =>
-  supabase.from('parts_library').select('*')
-    .or(`part_name.ilike.%${query}%,vehicle_text.ilike.%${query}%,brand.ilike.%${query}%,vehicle_model.ilike.%${query}%`)
+const sanitizePartsQuery = (query) =>
+  String(query || '')
+    .trim()
+    .replace(/[%,()]/g, ' ')
+    .replace(/_/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+
+export const searchParts = (query) => {
+  const q = sanitizePartsQuery(query)
+  if (!q) return Promise.resolve({ data: [], error: null })
+  return supabase.from('parts_library').select('*')
+    .or(`part_name.ilike.%${q}%,vehicle_text.ilike.%${q}%,vehicle_make.ilike.%${q}%,vehicle_model.ilike.%${q}%`)
     .order('category').order('part_name').limit(50)
+}
 
 export const addPart = (data) =>
   supabase.from('parts_library').insert(data).select().single()

@@ -14,6 +14,40 @@ import { printInvoice, downloadInvoice } from '../lib/pdf'
 
 const fmt = (n) => `$${parseFloat(n || 0).toFixed(2)}`
 const fmtSGD = (n) => `SGD $${parseFloat(n || 0).toLocaleString('en-SG', { minimumFractionDigits: 2 })}`
+const fmtMoney = (n) => `$${Math.round(Number(n || 0)).toLocaleString()}`
+
+function getPartPriceMeta(part, latestPrice) {
+  if (part?.selling_price != null && part.selling_price !== '') {
+    return {
+      amount: parseFloat(part.selling_price),
+      label: fmtMoney(part.selling_price),
+      source: 'Standard price',
+      needsConfirm: false,
+    }
+  }
+  if (part?.selling_price_text) {
+    return {
+      amount: 0,
+      label: part.selling_price_text,
+      source: 'Price note',
+      needsConfirm: true,
+    }
+  }
+  if (latestPrice?.amount != null) {
+    return {
+      amount: parseFloat(latestPrice.amount),
+      label: `Recent ${fmtMoney(latestPrice.amount)}`,
+      source: 'Recent sold price',
+      needsConfirm: true,
+    }
+  }
+  return {
+    amount: 0,
+    label: 'Price TBC',
+    source: 'Needs confirmation',
+    needsConfirm: true,
+  }
+}
 
 const AVATAR_PALETTE = [
   { bg:'#FEF0EB', fg:'#D85A30' },
@@ -987,7 +1021,7 @@ function InvoiceModal({ customer, vehicle, invoice, catalog, onClose, onSave }) 
   const [invType, setInvType] = useState(invoice?.invoice_type || 'auto')
   const [cart, setCart] = useState(
     invoice?.invoice_items?.map(it => ({
-      desc: it.description, cat: it.category || '', cost: parseFloat(it.unit_price || it.amount || 0)
+      desc: it.description, cat: it.category || '', cost: parseFloat(it.unit_price || it.amount || 0), itemType: 'legacy'
     })) || []
   )
   const [activeCat, setActiveCat] = useState(null)
@@ -995,21 +1029,57 @@ function InvoiceModal({ customer, vehicle, invoice, catalog, onClose, onSave }) 
   const [partsQuery, setPartsQuery]   = useState('')
   const [partsResults, setPartsResults] = useState([])
   const [partsLoading, setPartsLoading] = useState(false)
+  const [partsError, setPartsError] = useState('')
+  const [partsLatestMap, setPartsLatestMap] = useState({})
+  const partsSearchSeqRef = useRef(0)
 
   useEffect(() => {
     if (!invoice) generateInvoiceNo().then(setInvNo)
   }, [])
 
+  const loadPartLatestPrices = useCallback(async (partsList) => {
+    const ids = [...new Set((partsList || []).map(p => p.id).filter(Boolean))]
+    if (!ids.length) return
+    const { data, error } = await supabase
+      .from('part_price_recent')
+      .select('part_id, amount, date, invoice_no, car_make, car_model')
+      .in('part_id', ids)
+      .eq('rn', 1)
+    if (error) return
+    const next = {}
+    for (const row of data || []) next[row.part_id] = row
+    setPartsLatestMap(prev => ({ ...prev, ...next }))
+  }, [])
+
   useEffect(() => {
-    if (!partsQuery.trim()) { setPartsResults([]); return }
-    setPartsLoading(true)
-    const t = setTimeout(async () => {
-      const { data } = await searchParts(partsQuery.trim())
-      setPartsResults(data || [])
+    const seq = partsSearchSeqRef.current + 1
+    partsSearchSeqRef.current = seq
+    if (!partsQuery.trim()) {
+      setPartsResults([])
+      setPartsError('')
       setPartsLoading(false)
+      return
+    }
+    setPartsLoading(true)
+    setPartsError('')
+    const t = setTimeout(async () => {
+      try {
+        const { data, error } = await searchParts(partsQuery.trim())
+        if (partsSearchSeqRef.current !== seq) return
+        if (error) throw error
+        const rows = data || []
+        setPartsResults(rows)
+        loadPartLatestPrices(rows)
+      } catch (err) {
+        if (partsSearchSeqRef.current !== seq) return
+        setPartsResults([])
+        setPartsError('Parts search failed. Please try again.')
+      } finally {
+        if (partsSearchSeqRef.current === seq) setPartsLoading(false)
+      }
     }, 250)
     return () => clearTimeout(t)
-  }, [partsQuery])
+  }, [partsQuery, loadPartLatestPrices])
 
   const detectType = (cartItems) => {
     const descs = cartItems.map(i => i.desc.toLowerCase())
@@ -1033,7 +1103,7 @@ function InvoiceModal({ customer, vehicle, invoice, catalog, onClose, onSave }) 
     if (exists >= 0) {
       setCart(cart.filter((_, i) => i !== exists))
     } else {
-      setCart([...cart, { desc: item.name, cat: item.category, cost: parseFloat(item.default_price || 0) }])
+      setCart([...cart, { desc: item.name, cat: item.category, cost: parseFloat(item.default_price || 0), itemType: 'service' }])
     }
   }
 
@@ -1080,7 +1150,7 @@ function InvoiceModal({ customer, vehicle, invoice, catalog, onClose, onSave }) 
           <div style={{ background: currentType==='onew'?'#e6f1fb': currentType==='kc_gearbox'?'#fff3ef':'#eaf3de',
             borderRadius:8, padding:'8px 12px', marginBottom:12, fontSize:12, fontWeight:600,
             color: currentType==='onew'?'#185fa5': currentType==='kc_gearbox'?'#D85A30':'#1a7f37' }}>
-            📄 {typeLabel[currentType]}
+            {typeLabel[currentType]}
             <span style={{ fontWeight:400, color:'#888', marginLeft:8 }}>
               {invType==='auto'?'(auto-detected 自动识别)':'(manual 手动)'}
             </span>
@@ -1189,10 +1259,12 @@ function InvoiceModal({ customer, vehicle, invoice, catalog, onClose, onSave }) 
             )}
           </div>
           {partsLoading && <div style={{ fontSize: 12, color: 'var(--text3)', marginBottom: 8 }}>Searching... 搜索中</div>}
+          {partsError && <div style={{ fontSize: 12, color: '#c0392b', marginBottom: 8 }}>{partsError}</div>}
           {partsResults.length > 0 && (
             <div style={{ border: '1px solid var(--border)', borderRadius: 8, overflow: 'hidden', marginBottom: 12 }}>
               {partsResults.map(p => {
-                const hasPrice = p.selling_price != null
+                const latestPrice = partsLatestMap[p.id]
+                const priceMeta = getPartPriceMeta(p, latestPrice)
                 const inCart = cart.some(c => c.desc === p.part_name && c.partId === p.id)
                 return (
                   <div key={p.id}
@@ -1209,22 +1281,30 @@ function InvoiceModal({ customer, vehicle, invoice, catalog, onClose, onSave }) 
                         setCart([...cart, {
                           desc: p.part_name,
                           cat: p.category || 'Parts',
-                          cost: hasPrice ? parseFloat(p.selling_price) : 0,
+                          cost: priceMeta.amount,
                           partId: p.id,
-                          priceText: !hasPrice ? (p.selling_price_text || null) : null,
+                          itemType: 'part',
+                          vehicleText: p.vehicle_text || '',
+                          priceSource: priceMeta.source,
+                          priceLabel: priceMeta.label,
+                          priceText: priceMeta.needsConfirm ? priceMeta.label : null,
                         }])
                       }
                     }}>
                     <input type="checkbox" readOnly checked={inCart} style={{ pointerEvents: 'none' }} />
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.part_name}</div>
-                      <div style={{ fontSize: 11, color: 'var(--text3)' }}>{p.vehicle_text}{p.category ? ` · ${p.category}` : ''}</div>
+                      <div style={{ fontSize: 11, color: 'var(--text3)' }}>
+                        {[p.vehicle_text, p.category].filter(Boolean).join(' · ')}
+                      </div>
+                      <div style={{ fontSize: 10, color: priceMeta.needsConfirm ? '#c0392b' : 'var(--text3)', marginTop: 2 }}>
+                        {priceMeta.source}{latestPrice?.date ? ` · ${String(latestPrice.date).slice(0, 10)}` : ''}
+                      </div>
                     </div>
                     <div style={{ fontSize: 12, fontFamily: 'monospace', flexShrink: 0 }}>
-                      {hasPrice
-                        ? <span style={{ color: 'var(--orange)', fontWeight: 700 }}>${parseFloat(p.selling_price).toFixed(2)}</span>
-                        : <span style={{ color: '#c0392b', fontSize: 11 }}>{p.selling_price_text || 'Price TBC'}</span>
-                      }
+                      <span style={{ color: priceMeta.needsConfirm ? '#c0392b' : 'var(--orange)', fontWeight: 700 }}>
+                        {priceMeta.label}
+                      </span>
                     </div>
                   </div>
                 )
@@ -1234,20 +1314,35 @@ function InvoiceModal({ customer, vehicle, invoice, catalog, onClose, onSave }) 
 
           {/* Cart */}
           <div className="cart-section">
-            <div className="cart-label">🛒 Selected Items {cart.length > 0 && `(${cart.length})`}</div>
+            <div className="cart-label">Selected Items {cart.length > 0 && `(${cart.length})`}</div>
             {cart.length === 0
               ? <div className="cart-empty">Tick items above to add them here 勾选上方项目</div>
               : cart.map((item, i) => (
                 <div key={i} className="cart-item" style={{ flexDirection: 'column', alignItems: 'stretch', gap: 4 }}>
                   <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                    <div className="cart-item-name">{item.desc}</div>
+                    <div className="cart-item-name">
+                      {item.desc}
+                      {item.partId && (
+                        <span style={{
+                          marginLeft: 6, fontSize: 10, fontWeight: 700, color: 'var(--orange)',
+                          background: '#fff3ef', borderRadius: 9999, padding: '1px 7px',
+                        }}>
+                          STANDARD PART
+                        </span>
+                      )}
+                    </div>
                     <input type="number" style={{ width: 80, padding: '3px 6px', border: `1px solid ${item.priceText ? '#e74c3c' : 'var(--border)'}`, borderRadius: 5, fontSize: 12, textAlign: 'right' }}
                       value={item.cost} onChange={e => updateCost(i, e.target.value)} min="0" />
                     <button className="cart-item-del" onClick={() => setCart(cart.filter((_, j) => j !== i))}>×</button>
                   </div>
+                  {item.partId && (
+                    <div style={{ fontSize: 11, color: 'var(--text3)', paddingLeft: 2 }}>
+                      {[item.cat, item.vehicleText, item.priceSource].filter(Boolean).join(' · ')}
+                    </div>
+                  )}
                   {item.priceText && (
                     <div style={{ fontSize: 11, color: '#c0392b', paddingLeft: 2 }}>
-                      ⚠ Price TBC — quoted range: {item.priceText}. Please confirm price above.
+                      Price needs confirmation: {item.priceText}. Confirm the invoice price before saving.
                     </div>
                   )}
                 </div>
@@ -1275,7 +1370,7 @@ function InvoiceModal({ customer, vehicle, invoice, catalog, onClose, onSave }) 
           <div className="form-actions">
             <button className="btn" onClick={onClose}>Cancel 取消</button>
             <button className="btn btn-primary" onClick={save} disabled={saving}>
-              {saving ? 'Saving...' : `✓ Save Invoice 保存 (${cart.length} items)`}
+              {saving ? 'Saving...' : `Save Invoice 保存 (${cart.length} items)`}
             </button>
           </div>
         </div>
