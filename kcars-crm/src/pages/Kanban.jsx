@@ -14,6 +14,54 @@ const ADVISORS  = ['JON', 'JIMMY', 'MENG', 'IVY', 'NORMAN', 'XIN', 'ZHU', 'TAO',
 const MECHANICS = ['NORMAN', 'XIN', 'ZHU', 'TAO', 'XIONG', 'MENG']
 
 const toTitleCase = (s) => s.replace(/\b\w/g, c => c.toUpperCase())
+const fmtMoney = (n) => `$${Math.round(Number(n || 0)).toLocaleString()}`
+const sgToday = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Singapore' })
+const sgNowIso = () => new Date().toISOString()
+
+function daysSince(date) {
+  if (!date) return null
+  const start = new Date(date)
+  if (Number.isNaN(start.getTime())) return null
+  const diff = Date.now() - start.getTime()
+  return Math.max(0, Math.floor(diff / 86400000))
+}
+
+function formatAge(days) {
+  if (days == null) return 'Arrived today'
+  if (days === 0) return 'Arrived today'
+  if (days === 1) return 'In shop 1 day'
+  return `In shop ${days} days`
+}
+
+function formatDateShort(date) {
+  if (!date) return ''
+  const d = new Date(date)
+  if (Number.isNaN(d.getTime())) return ''
+  return d.toLocaleDateString('en-SG', { day: '2-digit', month: 'short' })
+}
+
+function formatDateTimeShort(date) {
+  if (!date) return ''
+  const d = new Date(date)
+  if (Number.isNaN(d.getTime())) return ''
+  return d.toLocaleString('en-SG', {
+    day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit',
+  })
+}
+
+function isOverdueDate(date) {
+  if (!date) return false
+  const today = sgToday()
+  return String(date).slice(0, 10) < today
+}
+
+const approvalMeta = {
+  not_sent: { label: 'Not sent', color: '#6B7280', bg: '#F3F4F6' },
+  sent:     { label: 'Sent',     color: '#2563EB', bg: '#EFF6FF' },
+  approved: { label: 'Approved', color: '#16A34A', bg: '#F0FDF4' },
+  declined: { label: 'Declined', color: '#DC2626', bg: '#FEF2F2' },
+  partial:  { label: 'Partial',  color: '#D97706', bg: '#FFFBEB' },
+}
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 function mergeSearchResults({ vehicles, customers }) {
@@ -251,6 +299,8 @@ function NewJobModal({ onClose, onSave }) {
     mileage:         '',
     job_description: '',
     initial_status:  'waiting',
+    promise_at:      '',
+    customer_waiting:false,
   })
   const [saving, setSaving] = useState(false)
   const set = (k) => (e) => setForm(f => ({ ...f, [k]: e.target.value }))
@@ -310,17 +360,21 @@ function NewJobModal({ onClose, onSave }) {
       }
 
       const invNo = await generateInvoiceNo()
-      const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Singapore' })
+      const today = sgToday()
+      const nowIso = sgNowIso()
 
       await createInvoice({
         customer_id:     customerId,
         vehicle_id:      vehicleId,
         invoice_no:      invNo,
         date:            today,
+        arrived_at:      nowIso,
         advisor:         form.advisor         || null,
         mechanic:        form.mechanic        || null,
         mileage:         form.mileage         || null,
         notes:           form.job_description.trim() || null,
+        promise_at:      form.promise_at ? new Date(form.promise_at).toISOString() : null,
+        customer_waiting:!!form.customer_waiting,
         work_order_only: true,
         work_status:     form.initial_status,
         status:          'draft',
@@ -426,6 +480,25 @@ function NewJobModal({ onClose, onSave }) {
                 ))}
               </select>
             </div>
+            <div className="form-row">
+              <label>Promise Time 交车承诺</label>
+              <input type="datetime-local" value={form.promise_at} onChange={set('promise_at')} />
+            </div>
+            <div className="form-row" style={{ justifyContent:'flex-end' }}>
+              <label style={{ visibility:'hidden' }}>Waiting</label>
+              <button
+                type="button"
+                onClick={() => setForm(f => ({ ...f, customer_waiting: !f.customer_waiting }))}
+                style={{
+                  height: 36, borderRadius: 8, border: `1px solid ${form.customer_waiting ? 'var(--orange)' : '#e3e8ee'}`,
+                  background: form.customer_waiting ? '#fff3ef' : '#fff',
+                  color: form.customer_waiting ? 'var(--orange)' : '#64748d',
+                  fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit',
+                }}
+              >
+                {form.customer_waiting ? 'Customer waiting' : 'Customer left car'}
+              </button>
+            </div>
           </div>
 
           <div className="form-row">
@@ -453,7 +526,8 @@ function NewJobModal({ onClose, onSave }) {
 // ── Kanban Card ──────────────────────────────────────────────────────────────
 function KanbanCard({ card, col, columns, dragging, onDragStart, onDragEnd, onMove, onSelectCustomer }) {
   const [expanded, setExpanded] = useState(false)
-  const items = card.invoice_items || []
+  const items = [...(card.invoice_items || [])].sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0))
+  const pendingParts = (card.invoice_parts_pending || []).filter(p => p.status !== 'arrived' && p.status !== 'cancelled')
   const c     = card.customers   || {}
 
   const colIdx = columns.findIndex(x => x.key === col.key)
@@ -461,6 +535,12 @@ function KanbanCard({ card, col, columns, dragging, onDragStart, onDragEnd, onMo
   const nextCol = colIdx < columns.length - 1 ? columns[colIdx + 1] : null
 
   const isWorkOrder = !!card.work_order_only
+  const ageDays = daysSince(card.arrived_at || card.date)
+  const isAged = ageDays != null && ageDays >= 3 && card.work_status !== 'paid'
+  const approval = approvalMeta[card.customer_approval_status || 'not_sent'] || approvalMeta.not_sent
+  const overduePart = pendingParts.find(p => isOverdueDate(p.eta_date))
+  const hasPromise = !!card.promise_at
+  const promiseOverdue = hasPromise && new Date(card.promise_at).getTime() < Date.now() && !['completed', 'paid'].includes(card.work_status)
 
   return (
     <div
@@ -468,17 +548,29 @@ function KanbanCard({ card, col, columns, dragging, onDragStart, onDragEnd, onMo
       draggable
       onDragStart={e => onDragStart(e, card.id)}
       onDragEnd={onDragEnd}
-      style={{ opacity: dragging ? .4 : 1, borderLeft: `3px solid ${col.color}`, cursor: 'grab' }}>
+      style={{
+        opacity: dragging ? .4 : 1,
+        borderLeft: `3px solid ${overduePart ? '#DC2626' : isAged ? '#D97706' : col.color}`,
+        cursor: 'grab',
+        background: overduePart ? '#FFF7F7' : isAged ? '#FFFBEB' : undefined,
+      }}>
 
-      {/* WORK ORDER badge */}
-      {isWorkOrder && (
-        <div style={{ marginBottom: 6 }}>
+      <div style={{ display:'flex', alignItems:'center', gap:5, flexWrap:'wrap', marginBottom:6 }}>
+        {isWorkOrder && (
           <span style={{
             fontSize: 9, fontWeight: 700, letterSpacing: '.5px', textTransform: 'uppercase',
             background: '#fff0e6', color: 'var(--orange)', padding: '2px 8px', borderRadius: 9999,
           }}>WORK ORDER</span>
-        </div>
-      )}
+        )}
+        {card.customer_waiting && (
+          <span style={{ fontSize:9, fontWeight:700, background:'#FEF2F2', color:'#DC2626', padding:'2px 7px', borderRadius:9999 }}>
+            WAITING
+          </span>
+        )}
+        <span style={{ fontSize:9, fontWeight:700, background:approval.bg, color:approval.color, padding:'2px 7px', borderRadius:9999 }}>
+          {approval.label}
+        </span>
+      </div>
 
       {/* Customer + Plate */}
       <div style={{ display:'flex', justifyContent:'space-between', alignItems:'flex-start', gap:8, marginBottom:4 }}>
@@ -490,9 +582,9 @@ function KanbanCard({ card, col, columns, dragging, onDragStart, onDragEnd, onMo
             {c.car_plate || '—'}
           </div>
         </div>
-        {!isWorkOrder && (
-          <div style={{ fontSize:11, fontWeight:700, color:'var(--orange)', flexShrink:0 }}>
-            ${parseFloat(card.total || 0).toFixed(0)}
+        {Number(card.total || 0) > 0 && (
+          <div style={{ fontSize:12, fontWeight:800, color:'var(--orange)', flexShrink:0, fontFeatureSettings:'"tnum"' }}>
+            {fmtMoney(card.total)}
           </div>
         )}
       </div>
@@ -502,34 +594,79 @@ function KanbanCard({ card, col, columns, dragging, onDragStart, onDragEnd, onMo
         <div style={{ fontSize:11, color:'var(--text3)', marginBottom:4 }}>{c.car_make} {c.car_model}</div>
       )}
 
-      {/* Work order: job description */}
-      {isWorkOrder && card.notes && (
+      <div style={{ display:'flex', gap:5, flexWrap:'wrap', marginBottom:6 }}>
+        <span style={{
+          fontSize:10, fontWeight:700,
+          color: overduePart ? '#DC2626' : isAged ? '#D97706' : '#64748d',
+          background: overduePart ? '#FEF2F2' : isAged ? '#FEF3C7' : '#F3F4F6',
+          borderRadius:9999, padding:'2px 7px',
+        }}>
+          {formatAge(ageDays)}
+        </span>
+        {hasPromise && (
+          <span style={{
+            fontSize:10, fontWeight:700,
+            color: promiseOverdue ? '#DC2626' : '#2563EB',
+            background: promiseOverdue ? '#FEF2F2' : '#EFF6FF',
+            borderRadius:9999, padding:'2px 7px',
+          }}>
+            Promise {formatDateTimeShort(card.promise_at)}
+          </span>
+        )}
+      </div>
+
+      {/* Services preview */}
+      {items.length > 0 ? (
+        <>
+          {items.slice(0, 3).map((it, i) => (
+            <div key={i} style={{ fontSize:11, color:'var(--text3)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+              · {it.description}
+            </div>
+          ))}
+          {items.length > 3 && !expanded && (
+            <div style={{ fontSize:11, color:'var(--orange)', cursor:'pointer', marginTop:2 }}
+              onClick={() => setExpanded(true)}>+{items.length - 3} more...</div>
+          )}
+          {expanded && items.slice(3).map((it, i) => (
+            <div key={i} style={{ fontSize:11, color:'var(--text3)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+              · {it.description}
+            </div>
+          ))}
+        </>
+      ) : card.notes ? (
         <div style={{
           fontSize:11, color:'var(--text2)', marginBottom:6,
           display:'-webkit-box', WebkitLineClamp:2, WebkitBoxOrient:'vertical', overflow:'hidden',
         }}>
           {card.notes}
         </div>
+      ) : (
+        <div style={{ fontSize:11, color:'var(--text3)', marginBottom:6 }}>No job items yet</div>
       )}
 
-      {/* Regular invoice: services preview */}
-      {!isWorkOrder && (
-        <>
-          {items.slice(0, 2).map((it, i) => (
-            <div key={i} style={{ fontSize:11, color:'var(--text3)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
-              · {it.description}
-            </div>
-          ))}
-          {items.length > 2 && !expanded && (
-            <div style={{ fontSize:11, color:'var(--orange)', cursor:'pointer', marginTop:2 }}
-              onClick={() => setExpanded(true)}>+{items.length - 2} more...</div>
+      {pendingParts.length > 0 && (
+        <div style={{
+          marginTop:7, padding:'7px 8px', borderRadius:8,
+          border:`1px solid ${overduePart ? '#FCA5A5' : '#FDE68A'}`,
+          background: overduePart ? '#FEF2F2' : '#FFFBEB',
+        }}>
+          <div style={{ fontSize:10, fontWeight:800, color:overduePart ? '#DC2626' : '#B45309', marginBottom:3 }}>
+            Parts Pending
+          </div>
+          {pendingParts.slice(0, 2).map(part => {
+            const overdue = isOverdueDate(part.eta_date)
+            return (
+              <div key={part.id} style={{ fontSize:11, color:overdue ? '#DC2626' : '#78350F', lineHeight:1.35 }}>
+                {part.part_name}
+                {part.supplier ? ` · ${part.supplier}` : ''}
+                {part.eta_date ? ` · ETA ${formatDateShort(part.eta_date)}` : ''}
+              </div>
+            )
+          })}
+          {pendingParts.length > 2 && (
+            <div style={{ fontSize:10, color:'#B45309', marginTop:2 }}>+{pendingParts.length - 2} more parts</div>
           )}
-          {expanded && items.slice(2).map((it, i) => (
-            <div key={i} style={{ fontSize:11, color:'var(--text3)', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
-              · {it.description}
-            </div>
-          ))}
-        </>
+        </div>
       )}
 
       {/* Advisor / Mechanic */}
@@ -542,7 +679,10 @@ function KanbanCard({ card, col, columns, dragging, onDragStart, onDragEnd, onMo
 
       {/* Footer: invoice no + status / convert button */}
       <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginTop:8, gap:6 }}>
-        <span style={{ fontSize:10, fontWeight:600, color:'var(--text3)' }}>{card.invoice_no}</span>
+        <span style={{ fontSize:10, fontWeight:600, color:'var(--text3)' }}>
+          {card.invoice_no}
+          {card.arrived_at && <span> · Arr {formatDateShort(card.arrived_at)}</span>}
+        </span>
         {isWorkOrder ? (
           <button
             onClick={() => card.customer_id && onSelectCustomer?.(card.customer_id)}
@@ -600,12 +740,25 @@ export default function Kanban({ onSelectCustomer }) {
   const load = useCallback(async () => {
     setLoading(true)
     let q = supabase.from('invoices')
-      .select('id, invoice_no, date, total, status, work_status, work_order_only, notes, advisor, mechanic, mileage, customer_id, invoice_items(description), customers(id, name, car_plate, car_make, car_model)')
+      .select(`
+        id, invoice_no, date, total, status, work_status, work_order_only,
+        notes, advisor, mechanic, mileage, customer_id, arrived_at, started_at,
+        completed_at, promise_at, customer_waiting, customer_approval_status,
+        invoice_items(id, description, category, qty, unit_price, amount, sort_order, part_id, item_type),
+        invoice_parts_pending(id, part_name, supplier, ordered_at, eta_date, arrived_at, status, notes),
+        customers(id, name, car_plate, car_make, car_model)
+      `)
       .order('created_at', { ascending: true })
     q = dateFilter === 'today'
       ? q.eq('date', todayStr)
       : q.or('work_status.neq.paid,work_status.is.null')
-    const { data } = await q
+    const { data, error } = await q
+    if (error) {
+      console.error('[Work Board] load failed:', error)
+      setCards([])
+      setLoading(false)
+      return
+    }
     setCards(data || [])
     setLoading(false)
   }, [dateFilter]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -613,8 +766,14 @@ export default function Kanban({ onSelectCustomer }) {
   useEffect(() => { load() }, [load])
 
   const moveCard = async (cardId, newStatus) => {
-    setCards(prev => prev.map(c => c.id === cardId ? { ...c, work_status: newStatus } : c))
-    await supabase.from('invoices').update({ work_status: newStatus }).eq('id', cardId)
+    const card = cards.find(c => c.id === cardId)
+    const patch = { work_status: newStatus }
+    const now = sgNowIso()
+    if (newStatus === 'repairing' && !card?.started_at) patch.started_at = now
+    if (newStatus === 'completed' && !card?.completed_at) patch.completed_at = now
+    if (newStatus === 'paid' && !card?.completed_at) patch.completed_at = now
+    setCards(prev => prev.map(c => c.id === cardId ? { ...c, ...patch } : c))
+    await supabase.from('invoices').update(patch).eq('id', cardId)
   }
 
   const onDragStart = (e, id) => { setDragId(id); e.dataTransfer.effectAllowed = 'move' }
