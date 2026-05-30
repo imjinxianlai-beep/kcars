@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
-import { supabase, createInvoice, generateInvoiceNo, searchVehiclesAndCustomers, upsertCustomer, addVehicle, getVehicleMakes, getVehicleModels } from '../lib/supabase'
-import { Clock, Wrench, Package, CheckCircle2, CircleDollarSign, Columns3, RefreshCw, Plus } from 'lucide-react'
+import { supabase, createInvoice, updateInvoice, generateInvoiceNo, searchVehiclesAndCustomers, upsertCustomer, addVehicle, getVehicleMakes, getVehicleModels, getCatalog } from '../lib/supabase'
+import { Clock, Wrench, Package, CheckCircle2, CircleDollarSign, Columns3, RefreshCw, Plus, Pencil } from 'lucide-react'
+import InvoiceModal from '../components/InvoiceModal'
 
 const COLUMNS = [
   { key: 'waiting',   label: 'Waiting',   long: 'Waiting 等待检查',    Icon: Clock,            color: '#6B7280', bg: '#F9FAFB' },
@@ -524,7 +525,7 @@ function NewJobModal({ onClose, onSave }) {
 }
 
 // ── Kanban Card ──────────────────────────────────────────────────────────────
-function KanbanCard({ card, col, columns, dragging, onDragStart, onDragEnd, onMove, onSelectCustomer }) {
+function KanbanCard({ card, col, columns, dragging, onDragStart, onDragEnd, onMove, onSelectCustomer, onEdit }) {
   const [expanded, setExpanded] = useState(false)
   const items = [...(card.invoice_items || [])].sort((a, b) => (a.sort_order || 0) - (b.sort_order || 0))
   const pendingParts = (card.invoice_parts_pending || []).filter(p => p.status !== 'arrived' && p.status !== 'cancelled')
@@ -541,6 +542,7 @@ function KanbanCard({ card, col, columns, dragging, onDragStart, onDragEnd, onMo
   const overduePart = pendingParts.find(p => isOverdueDate(p.eta_date))
   const hasPromise = !!card.promise_at
   const promiseOverdue = hasPromise && new Date(card.promise_at).getTime() < Date.now() && !['completed', 'paid'].includes(card.work_status)
+  const isPaid = card.status === 'paid' || card.work_status === 'paid'
 
   return (
     <div
@@ -683,26 +685,38 @@ function KanbanCard({ card, col, columns, dragging, onDragStart, onDragEnd, onMo
           {card.invoice_no}
           {card.arrived_at && <span> · Arr {formatDateShort(card.arrived_at)}</span>}
         </span>
-        {isWorkOrder ? (
-          <button
-            onClick={() => card.customer_id && onSelectCustomer?.(card.customer_id)}
-            disabled={!card.customer_id}
-            style={{
-              fontSize:10, fontWeight:600, padding:'3px 9px', borderRadius:9999,
-              border:'1px solid var(--orange)', color:'var(--orange)', background:'transparent',
-              cursor: card.customer_id ? 'pointer' : 'not-allowed',
-              opacity: card.customer_id ? 1 : 0.4,
-              display:'flex', alignItems:'center', gap:3,
-            }}>
-            Convert ›
-          </button>
-        ) : (
+        <div style={{ display:'flex', alignItems:'center', gap:5 }}>
+          {isWorkOrder && (
+            <button
+              onClick={() => card.customer_id && onSelectCustomer?.(card.customer_id)}
+              disabled={!card.customer_id}
+              style={{
+                fontSize:10, fontWeight:600, padding:'3px 9px', borderRadius:9999,
+                border:'1px solid var(--orange)', color:'var(--orange)', background:'transparent',
+                cursor: card.customer_id ? 'pointer' : 'not-allowed',
+                opacity: card.customer_id ? 1 : 0.4,
+                display:'flex', alignItems:'center', gap:3,
+              }}>
+              Convert ›
+            </button>
+          )}
+          {!isPaid && (
+            <button
+              onClick={() => onEdit?.(card)}
+              style={{
+                fontSize:10, fontWeight:700, padding:'3px 8px', borderRadius:9999,
+                border:'1px solid var(--border)', color:'var(--text2)', background:'var(--card)',
+                cursor:'pointer', display:'flex', alignItems:'center', gap:3,
+              }}>
+              <Pencil size={9} /> Edit
+            </button>
+          )}
           <span style={{
             fontSize:10, fontWeight:700, padding:'1px 7px', borderRadius:20,
             background: card.status==='paid'?'var(--green-light)': card.status==='confirmed'?'var(--blue-light)':'#F3F4F6',
             color:      card.status==='paid'?'var(--green)':      card.status==='confirmed'?'var(--blue)':      '#6B7280',
           }}>{card.status === 'paid' ? 'Paid' : card.status === 'confirmed' ? 'Confirmed' : 'Draft'}</span>
-        )}
+        </div>
       </div>
 
       {/* Move buttons */}
@@ -734,17 +748,23 @@ export default function Kanban({ onSelectCustomer }) {
   const [dragOver, setDragOver] = useState(null)
   const [showNewJob, setShowNewJob] = useState(false)
   const [dateFilter, setDateFilter] = useState('today')
+  const [catalog, setCatalog] = useState([])
+  const [editingCard, setEditingCard] = useState(null)
 
   const todayStr = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Singapore' })
+
+  useEffect(() => {
+    getCatalog().then(({ data }) => setCatalog(data || []))
+  }, [])
 
   const load = useCallback(async () => {
     setLoading(true)
     let q = supabase.from('invoices')
       .select(`
-        id, invoice_no, date, total, status, work_status, work_order_only,
-        notes, advisor, mechanic, mileage, customer_id, arrived_at, started_at,
+        id, invoice_no, date, subtotal, discount, total, status, work_status, work_order_only,
+        notes, advisor, mechanic, mileage, chassis_no, invoice_type, customer_id, vehicle_id, arrived_at, started_at,
         completed_at, promise_at, customer_waiting, customer_approval_status,
-        invoice_items(id, description, category, qty, unit_price, amount, sort_order, part_id, item_type),
+        invoice_items(id, description, category, qty, unit_price, amount, sort_order, part_id, item_type, note),
         invoice_parts_pending(id, part_name, supplier, ordered_at, eta_date, arrived_at, status, notes),
         customers(id, name, car_plate, car_make, car_model)
       `)
@@ -774,6 +794,18 @@ export default function Kanban({ onSelectCustomer }) {
     if (newStatus === 'paid' && !card?.completed_at) patch.completed_at = now
     setCards(prev => prev.map(c => c.id === cardId ? { ...c, ...patch } : c))
     await supabase.from('invoices').update(patch).eq('id', cardId)
+  }
+
+  const editCard = (card) => {
+    if (card.status === 'paid' || card.work_status === 'paid') return
+    setEditingCard(card)
+  }
+
+  const saveEditedCard = async (invoicePatch, items) => {
+    if (!editingCard) return
+    await updateInvoice(editingCard.id, invoicePatch, items)
+    setEditingCard(null)
+    load()
   }
 
   const onDragStart = (e, id) => { setDragId(id); e.dataTransfer.effectAllowed = 'move' }
@@ -877,6 +909,7 @@ export default function Kanban({ onSelectCustomer }) {
                       onDragEnd={onDragEnd}
                       onMove={moveCard}
                       onSelectCustomer={onSelectCustomer}
+                      onEdit={editCard}
                     />
                   ))}
                 </div>
@@ -902,6 +935,17 @@ export default function Kanban({ onSelectCustomer }) {
         <NewJobModal
           onClose={() => setShowNewJob(false)}
           onSave={() => { setShowNewJob(false); load() }}
+        />
+      )}
+
+      {editingCard && (
+        <InvoiceModal
+          customer={editingCard.customers}
+          vehicle={null}
+          invoice={editingCard}
+          catalog={catalog}
+          onClose={() => setEditingCard(null)}
+          onSave={saveEditedCard}
         />
       )}
     </div>

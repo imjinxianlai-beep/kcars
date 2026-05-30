@@ -58,25 +58,77 @@ export const createInvoice = async (invoice, items) => {
     .from('invoices').insert(invoice).select().single()
   if (error) throw error
   if (items?.length) {
-    const rows = items.map((it, i) => ({ ...it, invoice_id: inv.id, sort_order: i }))
+    const rows = items.map((it, i) => normalizeInvoiceItem(it, inv.id, i))
     const { error: ie } = await supabase.from('invoice_items').insert(rows)
     if (ie) throw ie
   }
   return inv
 }
 
+const normalizeInvoiceItem = (item, invoiceId, sortOrder) => ({
+  ...(item.id ? { id: item.id } : {}),
+  invoice_id: invoiceId,
+  description: item.description,
+  category: item.category || null,
+  qty: item.qty ?? 1,
+  unit_price: item.unit_price ?? item.amount ?? 0,
+  amount: item.amount ?? item.unit_price ?? 0,
+  sort_order: sortOrder,
+  part_id: item.part_id || null,
+  item_type: item.item_type || (item.part_id ? 'part' : 'service'),
+  note: item.note || null,
+})
+
 export const updateInvoice = async (id, invoice, items) => {
-  const { error } = await supabase.from('invoices').update(invoice).eq('id', id)
+  const invoicePatch = invoice?.status === 'paid' ? { ...invoice, work_status: 'paid' } : invoice
+  const { error } = await supabase.from('invoices').update(invoicePatch).eq('id', id)
   if (error) throw error
-  await supabase.from('invoice_items').delete().eq('invoice_id', id)
-  if (items?.length) {
-    const rows = items.map((it, i) => ({ ...it, invoice_id: id, sort_order: i }))
-    await supabase.from('invoice_items').insert(rows)
+
+  const nextItems = (items || []).map((it, i) => normalizeInvoiceItem(it, id, i))
+  const nextIds = nextItems.map(it => it.id).filter(Boolean)
+
+  const { data: existing, error: existingError } = await supabase
+    .from('invoice_items')
+    .select('id')
+    .eq('invoice_id', id)
+  if (existingError) throw existingError
+
+  const deleteIds = (existing || [])
+    .map(row => row.id)
+    .filter(existingId => !nextIds.includes(existingId))
+
+  if (deleteIds.length) {
+    const { error: deleteError } = await supabase
+      .from('invoice_items')
+      .delete()
+      .in('id', deleteIds)
+    if (deleteError) throw deleteError
+  }
+
+  const updates = nextItems.filter(it => it.id)
+  for (const row of updates) {
+    const { id: itemId, ...patch } = row
+    const { error: itemError } = await supabase
+      .from('invoice_items')
+      .update(patch)
+      .eq('id', itemId)
+      .eq('invoice_id', id)
+    if (itemError) throw itemError
+  }
+
+  const inserts = nextItems.filter(it => !it.id)
+  if (inserts.length) {
+    const { error: insertError } = await supabase
+      .from('invoice_items')
+      .insert(inserts)
+    if (insertError) throw insertError
   }
 }
 
 export const updateInvoiceStatus = (id, status) =>
-  supabase.from('invoices').update({ status }).eq('id', id)
+  supabase.from('invoices')
+    .update(status === 'paid' ? { status, work_status: 'paid' } : { status })
+    .eq('id', id)
 
 export const deleteInvoice = (id) =>
   supabase.from('invoices').delete().eq('id', id)
