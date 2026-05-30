@@ -679,43 +679,46 @@ function KanbanCard({ card, col, columns, dragging, onDragStart, onDragEnd, onMo
         </div>
       )}
 
-      {/* Footer: invoice no + status / convert button */}
-      <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginTop:8, gap:6 }}>
-        <span style={{ fontSize:10, fontWeight:600, color:'var(--text3)' }}>
-          {card.invoice_no}
-          {card.arrived_at && <span> · Arr {formatDateShort(card.arrived_at)}</span>}
-        </span>
-        <div style={{ display:'flex', alignItems:'center', gap:5 }}>
-          {isWorkOrder && (
-            <button
-              onClick={() => card.customer_id && onSelectCustomer?.(card.customer_id)}
-              disabled={!card.customer_id}
-              style={{
-                fontSize:10, fontWeight:600, padding:'3px 9px', borderRadius:9999,
-                border:'1px solid var(--orange)', color:'var(--orange)', background:'transparent',
-                cursor: card.customer_id ? 'pointer' : 'not-allowed',
-                opacity: card.customer_id ? 1 : 0.4,
-                display:'flex', alignItems:'center', gap:3,
-              }}>
-              Convert ›
-            </button>
-          )}
-          {!isPaid && (
-            <button
-              onClick={() => onEdit?.(card)}
-              style={{
-                fontSize:10, fontWeight:700, padding:'3px 8px', borderRadius:9999,
-                border:'1px solid var(--border)', color:'var(--text2)', background:'var(--card)',
-                cursor:'pointer', display:'flex', alignItems:'center', gap:3,
-              }}>
-              <Pencil size={9} /> Edit
-            </button>
-          )}
+      {/* Footer: invoice no + status / actions */}
+      <div style={{ marginTop:8 }}>
+        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:8, minWidth:0 }}>
+          <span style={{ fontSize:10, fontWeight:600, color:'var(--text3)', whiteSpace:'nowrap', overflow:'hidden', textOverflow:'ellipsis' }}>
+            {card.invoice_no}
+            {card.arrived_at && <span> · Arr {formatDateShort(card.arrived_at)}</span>}
+          </span>
           <span style={{
             fontSize:10, fontWeight:700, padding:'1px 7px', borderRadius:20,
             background: card.status==='paid'?'var(--green-light)': card.status==='confirmed'?'var(--blue-light)':'#F3F4F6',
             color:      card.status==='paid'?'var(--green)':      card.status==='confirmed'?'var(--blue)':      '#6B7280',
+            whiteSpace:'nowrap', flexShrink:0,
           }}>{card.status === 'paid' ? 'Paid' : card.status === 'confirmed' ? 'Confirmed' : 'Draft'}</span>
+        </div>
+        <div style={{ display:'flex', alignItems:'center', gap:6, marginTop:7, flexWrap:'wrap' }}>
+          {isWorkOrder && (
+            <button
+              onClick={(e) => { e.stopPropagation(); card.customer_id && onSelectCustomer?.(card.customer_id) }}
+              disabled={!card.customer_id}
+              style={{
+                fontSize:10, fontWeight:700, padding:'5px 11px', borderRadius:9999,
+                border:'1px solid var(--orange)', color:'var(--orange)', background:'transparent',
+                cursor: card.customer_id ? 'pointer' : 'not-allowed',
+                opacity: card.customer_id ? 1 : 0.4,
+                display:'flex', alignItems:'center', gap:3, whiteSpace:'nowrap',
+              }}>
+              Convert
+            </button>
+          )}
+          {!isPaid && (
+            <button
+              onClick={(e) => { e.stopPropagation(); onEdit?.(card) }}
+              style={{
+                fontSize:10, fontWeight:700, padding:'5px 10px', borderRadius:9999,
+                border:'1px solid var(--border)', color:'var(--text2)', background:'var(--card)',
+                cursor:'pointer', display:'flex', alignItems:'center', gap:3, whiteSpace:'nowrap',
+              }}>
+              <Pencil size={9} /> Edit
+            </button>
+          )}
         </div>
       </div>
 
