@@ -15,6 +15,13 @@ import InvoiceModal from '../components/InvoiceModal'
 
 const fmt = (n) => `$${parseFloat(n || 0).toFixed(2)}`
 const fmtSGD = (n) => `SGD $${parseFloat(n || 0).toLocaleString('en-SG', { minimumFractionDigits: 2 })}`
+const formatInvoiceStaff = (inv = {}) => {
+  const mechanicName = inv.mechanic || inv.technician || ''
+  return [
+    inv.advisor ? `Advisor ${inv.advisor}` : '',
+    mechanicName ? `Mechanic ${mechanicName}` : '',
+  ].filter(Boolean).join(' · ')
+}
 
 const AVATAR_PALETTE = [
   { bg:'#FEF0EB', fg:'#D85A30' },
@@ -82,6 +89,7 @@ export default function CRM({ session, pendingCustomerId, onCustomerSelected }) 
   const [tagFilter, setTagFilter] = useState(null)
   const [vehicles, setVehicles] = useState([])
   const [activeVehicle, setActiveVehicle] = useState(null)
+  const [invoiceHistoryFilter, setInvoiceHistoryFilter] = useState('active')
   const searchRef = useRef(null)
 
   // Load customers on mount
@@ -141,6 +149,7 @@ export default function CRM({ session, pendingCustomerId, onCustomerSelected }) 
   const selectCustomer = async (c) => {
     setSelected(c)
     setOpenInv(null)
+    setInvoiceHistoryFilter('active')
     setMobileView('detail')
     await Promise.all([loadInvoices(c.id), loadVehicles(c.id)])
   }
@@ -166,6 +175,18 @@ export default function CRM({ session, pendingCustomerId, onCustomerSelected }) 
   const filteredInvoices = activeVehicle
     ? invoices.filter(i => i.vehicle_id === activeVehicle.id)
     : invoices
+  const activeHistoryInvoices = filteredInvoices.filter(i => !i.voided_at)
+  const voidedHistoryInvoices = filteredInvoices.filter(i => i.voided_at)
+  const visibleHistoryInvoices = invoiceHistoryFilter === 'voided'
+    ? voidedHistoryInvoices
+    : activeHistoryInvoices
+
+  useEffect(() => {
+    if (invoiceHistoryFilter === 'voided' && voidedHistoryInvoices.length === 0) {
+      setInvoiceHistoryFilter('active')
+      setOpenInv(null)
+    }
+  }, [invoiceHistoryFilter, voidedHistoryInvoices.length])
 
   const totalAllRev = customers.reduce((a) => a, 0)
 
@@ -383,10 +404,34 @@ export default function CRM({ session, pendingCustomerId, onCustomerSelected }) 
               {/* Invoice List */}
               <div className="section-title">
                 <span style={{ display:'flex', alignItems:'center', gap:5 }}><ClipboardList size={11} /> INVOICE HISTORY 发票记录</span>
-                <span style={{ fontWeight: 400, color: 'var(--text3)' }}>{filteredInvoices.length} records</span>
+                <span style={{ fontWeight: 400, color: 'var(--text3)' }}>{visibleHistoryInvoices.length} records</span>
               </div>
 
-              {filteredInvoices.map((inv, idx) => (
+              <div style={{ display:'flex', gap:8, margin:'-4px 0 12px', flexWrap:'wrap' }}>
+                {[
+                  { key:'active', label:'Active', count: activeHistoryInvoices.length },
+                  ...(voidedHistoryInvoices.length > 0 ? [{ key:'voided', label:`Voided (${voidedHistoryInvoices.length})`, count: voidedHistoryInvoices.length }] : []),
+                ].map(tab => (
+                  <button
+                    key={tab.key}
+                    onClick={() => { setInvoiceHistoryFilter(tab.key); setOpenInv(null) }}
+                    style={{
+                      border:`1px solid ${invoiceHistoryFilter === tab.key ? 'var(--orange)' : 'var(--border)'}`,
+                      background: invoiceHistoryFilter === tab.key ? 'var(--orange-light)' : '#fff',
+                      color: invoiceHistoryFilter === tab.key ? 'var(--orange)' : 'var(--text2)',
+                      borderRadius:999,
+                      padding:'6px 12px',
+                      fontSize:12,
+                      fontWeight:700,
+                      cursor:'pointer',
+                    }}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
+              </div>
+
+              {visibleHistoryInvoices.map((inv, idx) => (
                 <InvoiceCard key={inv.id} inv={inv} open={openInv === idx}
                   onToggle={() => setOpenInv(openInv === idx ? null : idx)}
                   onEdit={() => { setEditingInvoice(inv); setModal('invoice') }}
@@ -480,6 +525,7 @@ function InvoiceCard({ inv, open, onToggle, onEdit, onDelete, onVoid, onStatusCh
   const canDelete = inv.status === 'draft' && !isVoided
   const canVoid = ['confirmed', 'paid'].includes(inv.status) && !isVoided
   const canEdit = inv.status !== 'paid' && !isPaid && !isVoided
+  const staffText = formatInvoiceStaff(inv)
   return (
     <div className="invoice-card" style={isVoided ? { opacity: 0.72, filter: 'grayscale(0.15)' } : undefined}>
       <div className="invoice-header" onClick={onToggle}>
@@ -490,7 +536,7 @@ function InvoiceCard({ inv, open, onToggle, onEdit, onDelete, onVoid, onStatusCh
             {isVoided && <span className="tag tag-voided">VOIDED 已作废</span>}
           </div>
           <div className="inv-date" style={{ display:'flex', alignItems:'center', gap:4 }}>
-            {inv.date}{inv.technician && <><span style={{ color:'var(--border)' }}>·</span><Wrench size={10} style={{ color:'var(--text3)' }} />{inv.technician}</>}
+            {inv.date}{staffText && <><span style={{ color:'var(--border)' }}>·</span><Wrench size={10} style={{ color:'var(--text3)' }} />{staffText}</>}
           </div>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
