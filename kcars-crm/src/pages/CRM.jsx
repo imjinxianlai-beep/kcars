@@ -3,7 +3,7 @@ import { motion } from 'framer-motion'
 import { Users, Plus, Pencil, Trash2, MessageCircle, Car, ClipboardList, Wrench, Phone, Calendar, FileText, Download, Printer, CheckCircle2, DollarSign, Clock, AlertTriangle } from 'lucide-react'
 import { supabase, getCustomers, getTotalCustomers, searchCustomers, getCustomer, getInvoices, deleteCustomer,
   upsertCustomer, updateCustomerTags, createInvoice, updateInvoice, updateInvoiceStatus,
-  deleteInvoice, getCatalog,
+  deleteInvoice, voidInvoice, getCatalog,
   getVehicles, addVehicle, updateVehicle, deleteVehicle, setPrimaryVehicle,
   getVehicleMakes, getVehicleModels,
   getActivities, addActivity, deleteActivity,
@@ -154,11 +154,12 @@ export default function CRM({ session, pendingCustomerId, onCustomerSelected }) 
     })
   }, [pendingCustomerId])
 
+  const activeInvoices = invoices.filter(i => !i.voided_at)
   const stats = {
     customers: customers.length,
-    invoices: invoices.length,
-    revenue: invoices.reduce((a, i) => a + (parseFloat(i.total) || 0), 0),
-    unpaid: invoices.filter(i => i.status !== 'paid').length,
+    invoices: activeInvoices.length,
+    revenue: activeInvoices.reduce((a, i) => a + (parseFloat(i.total) || 0), 0),
+    unpaid: activeInvoices.filter(i => i.status !== 'paid').length,
   }
 
   // Filter invoices by selected vehicle during render — no extra useEffect needed
@@ -297,7 +298,7 @@ export default function CRM({ session, pendingCustomerId, onCustomerSelected }) 
                     <div>
                       <div className="customer-name">{selected.name}</div>
                       <div className="customer-meta">
-                        {invoices.length} visits · {fmtSGD(stats.revenue)} total
+                        {stats.invoices} visits · {fmtSGD(stats.revenue)} total
                         {selected.updated_at && ` · Updated ${new Date(selected.updated_at).toLocaleDateString()}`}
                       </div>
                     </div>
@@ -390,11 +391,21 @@ export default function CRM({ session, pendingCustomerId, onCustomerSelected }) 
                   onToggle={() => setOpenInv(openInv === idx ? null : idx)}
                   onEdit={() => { setEditingInvoice(inv); setModal('invoice') }}
                   onDelete={async () => {
-                    if (!confirm('Delete this invoice?')) return
+                    if (inv.status !== 'draft' || inv.voided_at) return
+                    if (!confirm('Delete this draft invoice permanently? This cannot be undone.')) return
                     await deleteInvoice(inv.id)
                     loadInvoices(selected.id)
                   }}
+                  onVoid={async () => {
+                    if (inv.voided_at || inv.status === 'draft') return
+                    const reason = prompt('Void reason is required. This action cannot be undone.\n\nWhy is this invoice being voided?')
+                    if (!reason?.trim()) return alert('Void reason is required.')
+                    if (!confirm(`Void invoice ${inv.invoice_no}? This cannot be undone.`)) return
+                    await voidInvoice(inv.id, reason.trim())
+                    loadInvoices(selected.id)
+                  }}
                   onStatusChange={async (status) => {
+                    if (inv.voided_at) return
                     await updateInvoiceStatus(inv.id, status)
                     loadInvoices(selected.id)
                   }}
@@ -462,16 +473,21 @@ export default function CRM({ session, pendingCustomerId, onCustomerSelected }) 
 }
 
 // ─── Invoice Card ───────────────────────────────────────────────────────
-function InvoiceCard({ inv, open, onToggle, onEdit, onDelete, onStatusChange, customer }) {
+function InvoiceCard({ inv, open, onToggle, onEdit, onDelete, onVoid, onStatusChange, customer }) {
   const items = inv.invoice_items || []
   const isPaid = inv.status === 'paid' || inv.work_status === 'paid'
+  const isVoided = !!inv.voided_at
+  const canDelete = inv.status === 'draft' && !isVoided
+  const canVoid = ['confirmed', 'paid'].includes(inv.status) && !isVoided
+  const canEdit = inv.status !== 'paid' && !isPaid && !isVoided
   return (
-    <div className="invoice-card">
+    <div className="invoice-card" style={isVoided ? { opacity: 0.72, filter: 'grayscale(0.15)' } : undefined}>
       <div className="invoice-header" onClick={onToggle}>
         <div style={{ flex: 1 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap:'wrap' }}>
             <div className="inv-no">{inv.invoice_no}</div>
             <span className={`tag ${statusColors[inv.status]}`}>{statusLabels[inv.status]}</span>
+            {isVoided && <span className="tag tag-voided">VOIDED 已作废</span>}
           </div>
           <div className="inv-date" style={{ display:'flex', alignItems:'center', gap:4 }}>
             {inv.date}{inv.technician && <><span style={{ color:'var(--border)' }}>·</span><Wrench size={10} style={{ color:'var(--text3)' }} />{inv.technician}</>}
@@ -506,17 +522,29 @@ function InvoiceCard({ inv, open, onToggle, onEdit, onDelete, onStatusChange, cu
           )}
 
           <div className="inv-total-row">
-            <span>TOTAL / 总计</span>
-            <span>{fmt(inv.total)}</span>
+            <span>{isVoided ? 'VOIDED TOTAL / 已作废金额' : 'TOTAL / 总计'}</span>
+            <span style={isVoided ? { color:'var(--text3)', textDecoration:'line-through' } : undefined}>{fmt(inv.total)}</span>
           </div>
+
+          {isVoided && (
+            <div style={{ padding:'10px 14px', background:'#F3F4F6', color:'var(--text2)', fontSize:12, borderTop:'1px solid var(--border2)' }}>
+              <div style={{ fontWeight:700, color:'#6B7280', marginBottom:3 }}>Voided 作废</div>
+              <div>{inv.void_reason || 'No reason provided'}</div>
+              {inv.voided_at && (
+                <div style={{ color:'var(--text3)', marginTop:3 }}>
+                  {new Date(inv.voided_at).toLocaleString('en-SG')}
+                </div>
+              )}
+            </div>
+          )}
 
           {/* Actions */}
           <div style={{ display: 'flex', gap: 6, padding: '10px 14px', background: 'var(--bg2)', flexWrap: 'wrap' }}>
-            {!isPaid ? (
+            {canEdit ? (
               <button className="btn" style={{ fontSize:11, display:'flex', alignItems:'center', gap:4 }} onClick={onEdit}><Pencil size={11} /> Edit</button>
             ) : (
               <span style={{ fontSize:11, color:'var(--text3)', display:'flex', alignItems:'center', gap:4, padding:'5px 8px' }}>
-                Paid invoice locked
+                {isVoided ? 'Voided invoice locked' : 'Paid invoice locked'}
               </span>
             )}
             <button className="btn btn-green" style={{ fontSize:11, display:'flex', alignItems:'center', gap:4 }}
@@ -527,15 +555,20 @@ function InvoiceCard({ inv, open, onToggle, onEdit, onDelete, onStatusChange, cu
               onClick={() => printInvoice(inv, customer, inv.invoice_items || [], inv.invoice_type)}>
               <Printer size={11} /> Print
             </button>
-            {inv.status === 'draft' && (
+            {inv.status === 'draft' && !isVoided && (
               <button className="btn btn-blue" style={{ fontSize:11, display:'flex', alignItems:'center', gap:4 }}
                 onClick={() => onStatusChange('confirmed')}><CheckCircle2 size={11} /> Confirm</button>
             )}
-            {inv.status === 'confirmed' && (
+            {inv.status === 'confirmed' && !isVoided && (
               <button className="btn btn-green" style={{ fontSize:11, display:'flex', alignItems:'center', gap:4 }}
                 onClick={() => onStatusChange('paid')}><DollarSign size={11} /> Mark Paid</button>
             )}
-            {!isPaid && (
+            {canVoid && (
+              <button className="btn btn-danger" style={{ fontSize:11, display:'flex', alignItems:'center', gap:4 }} onClick={onVoid}>
+                Void
+              </button>
+            )}
+            {canDelete && (
               <button className="btn btn-danger" style={{ fontSize:11, marginLeft:'auto', display:'flex', alignItems:'center', gap:4 }} onClick={onDelete}><Trash2 size={11} /></button>
             )}
           </div>

@@ -32,7 +32,9 @@ export default function Reminders() {
     const { data } = await supabase
       .from('invoices')
       .select('date, customer_id, customers(id, name, phone, car_plate, car_make, car_model)')
-      .not('date', 'is', null).order('date', { ascending: false }).limit(20000)
+      .not('date', 'is', null)
+      .is('voided_at', null)
+      .order('date', { ascending: false }).limit(20000)
 
     const custMap = {}
     for (const row of data || []) {

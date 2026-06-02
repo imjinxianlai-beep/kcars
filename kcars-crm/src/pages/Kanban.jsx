@@ -771,6 +771,7 @@ export default function Kanban({ onSelectCustomer }) {
         invoice_parts_pending(id, part_name, supplier, ordered_at, eta_date, arrived_at, status, notes),
         customers(id, name, car_plate, car_make, car_model)
       `)
+      .is('voided_at', null)
       .order('created_at', { ascending: true })
     q = dateFilter === 'today'
       ? q.eq('date', todayStr)

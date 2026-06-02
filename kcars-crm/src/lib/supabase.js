@@ -130,6 +130,14 @@ export const updateInvoiceStatus = (id, status) =>
     .update(status === 'paid' ? { status, work_status: 'paid' } : { status })
     .eq('id', id)
 
+export const voidInvoice = (id, reason) =>
+  supabase.from('invoices')
+    .update({
+      voided_at: new Date().toISOString(),
+      void_reason: String(reason || '').trim(),
+    })
+    .eq('id', id)
+
 export const deleteInvoice = (id) =>
   supabase.from('invoices').delete().eq('id', id)
 

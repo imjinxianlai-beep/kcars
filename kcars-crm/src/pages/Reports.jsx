@@ -74,6 +74,7 @@ function DateQuery() {
       .from('invoices')
       .select('*, customers(name, car_plate, car_make, car_model, phone), invoice_items(*)')
       .gte('date', from).lte('date', to)
+      .is('voided_at', null)
       .order('date', { ascending: false })
     setLoading(false)
     setResults({ invoices: data || [], from, to })
@@ -95,6 +96,7 @@ function DateQuery() {
       .from('invoices')
       .select('*, customers(name, car_plate, car_make, car_model, phone), invoice_items(*)')
       .gte('date', from).lte('date', to)
+      .is('voided_at', null)
       .order('date', { ascending: false })
 
     setLoading(false)
@@ -312,18 +314,22 @@ function VehicleAnalysis() {
     // Get all customers with this make+model + their invoices
     const { data: custs } = await supabase
       .from('customers')
-      .select('*, invoices(id, date, total, invoice_no, technician, status)')
+      .select('*, invoices(id, date, total, invoice_no, technician, status, voided_at, void_reason)')
       .ilike('car_make', make)
       .ilike('car_model', model)
       .order('name')
 
     // Add visit count and total spend, sort by visits desc
-    const enriched = (custs || []).map(c => ({
-      ...c,
-      visitCount: (c.invoices || []).length,
-      totalSpend: (c.invoices || []).reduce((a,i) => a + parseFloat(i.total||0), 0),
-      lastVisit: (c.invoices || []).sort((a,b) => b.date.localeCompare(a.date))[0]?.date || ''
-    })).sort((a,b) => b.visitCount - a.visitCount)
+    const enriched = (custs || []).map(c => {
+      const activeInvoices = (c.invoices || []).filter(i => !i.voided_at)
+      return {
+        ...c,
+        invoices: activeInvoices,
+        visitCount: activeInvoices.length,
+        totalSpend: activeInvoices.reduce((a,i) => a + parseFloat(i.total||0), 0),
+        lastVisit: [...activeInvoices].sort((a,b) => b.date.localeCompare(a.date))[0]?.date || ''
+      }
+    }).sort((a,b) => b.visitCount - a.visitCount)
 
     setDrillData(enriched)
     setDrillLoading(false)

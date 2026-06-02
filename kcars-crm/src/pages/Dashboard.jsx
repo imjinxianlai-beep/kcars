@@ -29,15 +29,19 @@ export default function Dashboard({ onNavigate }) {
     const [todayRes, monthRes, recentRes, unpaidRes, newCustRes] = await Promise.all([
       // Today invoices
       supabase.from('invoices').select('id, total, status, customer_id')
-        .eq('date', todayStr),
+        .eq('date', todayStr)
+        .is('voided_at', null),
       // This month all invoices for chart + tech rankings
       supabase.from('invoices').select('id, date, total, status, technician, advisor, customers(name, car_plate)')
-        .gte('date', monthStart).lte('date', monthEnd).order('date', { ascending: true }),
+        .gte('date', monthStart).lte('date', monthEnd)
+        .is('voided_at', null)
+        .order('date', { ascending: true }),
       // Recent 10 invoices
       supabase.from('invoices').select('id, invoice_no, date, total, status, customers(name, car_plate)')
+        .is('voided_at', null)
         .order('date', { ascending: false }).order('created_at', { ascending: false }).limit(10),
       // Unpaid total
-      supabase.from('invoices').select('total').neq('status', 'paid'),
+      supabase.from('invoices').select('total').neq('status', 'paid').is('voided_at', null),
       // New customers this month
       supabase.from('customers').select('id', { count: 'exact', head: true })
         .gte('created_at', `${monthStart}T00:00:00`),

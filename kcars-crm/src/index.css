@@ -547,6 +547,7 @@ body {
 .tag-draft     { background: var(--bg2); color: var(--text3); border: 1px solid var(--border); }
 .tag-confirmed { background: var(--blue-light); color: var(--blue); }
 .tag-paid      { background: var(--green-light); color: var(--green); }
+.tag-voided    { background: #F3F4F6; color: #6B7280; border: 1px solid var(--border); }
 
 /* Customer tags */
 .cust-tag {
