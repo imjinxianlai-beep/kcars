@@ -17,10 +17,7 @@ const fmt = (n) => `$${parseFloat(n || 0).toFixed(2)}`
 const fmtSGD = (n) => `SGD $${parseFloat(n || 0).toLocaleString('en-SG', { minimumFractionDigits: 2 })}`
 const formatInvoiceStaff = (inv = {}) => {
   const mechanicName = inv.mechanic || inv.technician || ''
-  return [
-    inv.advisor ? `Advisor ${inv.advisor}` : '',
-    mechanicName ? `Mechanic ${mechanicName}` : '',
-  ].filter(Boolean).join(' · ')
+  return [inv.advisor || '', mechanicName].filter(Boolean).join(' · ')
 }
 
 const AVATAR_PALETTE = [
