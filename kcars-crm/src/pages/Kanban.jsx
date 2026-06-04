@@ -18,6 +18,8 @@ const toTitleCase = (s) => s.replace(/\b\w/g, c => c.toUpperCase())
 const fmtMoney = (n) => `$${Math.round(Number(n || 0)).toLocaleString()}`
 const sgToday = () => new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Singapore' })
 const sgNowIso = () => new Date().toISOString()
+const sgDateTimeLocalNow = () =>
+  new Date().toLocaleString('sv-SE', { timeZone: 'Asia/Singapore', hour12: false }).replace(' ', 'T').slice(0, 16)
 
 function daysSince(date) {
   if (!date) return null
@@ -335,6 +337,10 @@ function NewJobModal({ onClose, onSave }) {
   const save = async () => {
     const plate = (selected?.car_plate || newPlate).trim().toUpperCase()
     if (!plate) { alert('Car plate is required. 请输入车牌。'); return }
+    if (form.promise_at && form.promise_at < sgDateTimeLocalNow()) {
+      alert('Promise time must be in the future. 交车承诺时间必须是未来时间。')
+      return
+    }
     setSaving(true)
     try {
       let customerId = selected?.customerId ?? null
@@ -483,7 +489,7 @@ function NewJobModal({ onClose, onSave }) {
             </div>
             <div className="form-row">
               <label>Promise Time 交车承诺</label>
-              <input type="datetime-local" value={form.promise_at} onChange={set('promise_at')} />
+              <input type="datetime-local" value={form.promise_at} onChange={set('promise_at')} min={sgDateTimeLocalNow()} />
             </div>
             <div className="form-row" style={{ justifyContent:'flex-end' }}>
               <label style={{ visibility:'hidden' }}>Waiting</label>
