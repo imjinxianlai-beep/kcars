@@ -699,13 +699,19 @@ function KanbanCard({ card, col, columns, dragging, onDragStart, onDragEnd, onMo
             whiteSpace:'nowrap', flexShrink:0,
           }}>{card.status === 'paid' ? 'Paid' : card.status === 'confirmed' ? 'Confirmed' : 'Draft'}</span>
         </div>
-        <div style={{ display:'flex', alignItems:'center', gap:6, marginTop:7, flexWrap:'wrap' }}>
+        <div style={{
+          display:'grid',
+          gridTemplateColumns: isWorkOrder && !isPaid ? '1fr 1fr' : '1fr',
+          gap:6,
+          marginTop:7,
+        }}>
           {isWorkOrder && (
             <button
               onClick={(e) => { e.stopPropagation(); card.customer_id && onSelectCustomer?.(card.customer_id) }}
               disabled={!card.customer_id}
               style={{
-                fontSize:10, fontWeight:700, padding:'5px 11px', borderRadius:9999,
+                minWidth:0, justifyContent:'center',
+                fontSize:10, fontWeight:700, padding:'5px 8px', borderRadius:9999,
                 border:'1px solid var(--orange)', color:'var(--orange)', background:'transparent',
                 cursor: card.customer_id ? 'pointer' : 'not-allowed',
                 opacity: card.customer_id ? 1 : 0.4,
@@ -718,7 +724,8 @@ function KanbanCard({ card, col, columns, dragging, onDragStart, onDragEnd, onMo
             <button
               onClick={(e) => { e.stopPropagation(); onEdit?.(card) }}
               style={{
-                fontSize:10, fontWeight:700, padding:'5px 10px', borderRadius:9999,
+                minWidth:0, justifyContent:'center',
+                fontSize:10, fontWeight:700, padding:'5px 8px', borderRadius:9999,
                 border:'1px solid var(--border)', color:'var(--text2)', background:'var(--card)',
                 cursor:'pointer', display:'flex', alignItems:'center', gap:3, whiteSpace:'nowrap',
               }}>
