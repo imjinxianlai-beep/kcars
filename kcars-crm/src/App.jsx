@@ -3,6 +3,7 @@ import { LayoutDashboard, Users, Bell, BarChart2, Columns3, Search, FileText, Wr
 import { supabase } from './lib/supabase'
 import Login from './pages/Login'
 import { motion, AnimatePresence } from 'framer-motion'
+import './handover.css'
 
 const CRM       = lazy(() => import('./pages/CRM'))
 const Reminders = lazy(() => import('./pages/Reminders'))
@@ -10,6 +11,9 @@ const Reports   = lazy(() => import('./pages/Reports'))
 const Dashboard = lazy(() => import('./pages/Dashboard'))
 const Kanban    = lazy(() => import('./pages/Kanban'))
 const Parts     = lazy(() => import('./pages/Parts'))
+const Imports   = lazy(() => import('./pages/Imports'))
+const History   = lazy(() => import('./pages/History'))
+const Accounts  = lazy(() => import('./pages/Accounts'))
 
 class ErrorBoundary extends Component {
   constructor(props) { super(props); this.state = { error: null } }
@@ -44,6 +48,14 @@ const NAV_ITEMS = [
   { key: 'reports',   Icon: BarChart2,       label: 'Reports 报表' },
   { key: 'kanban',    Icon: Columns3,        label: 'Work Board 工单' },
   { key: 'parts',     Icon: Wrench,          label: 'Parts 配件' },
+  { key: 'imports',   Icon: FileText,        label: 'Monthly 更新数据' },
+  { key: 'import-history', Icon: BarChart2,  label: 'Imports 导入历史' },
+  { key: 'accounts',  Icon: User,            label: 'Accounts 账号' },
+]
+const OPERATOR_NAV = [
+  { key:'history',Icon:Search,label:'Search 查询记录' },
+  { key:'imports',Icon:FileText,label:'Update 更新数据' },
+  { key:'import-history',Icon:BarChart2,label:'Imports 导入历史' },
 ]
 
 export default function App() {
@@ -53,28 +65,52 @@ export default function App() {
   const [navCollapsed, setNavCollapsed] = useState(false)
   const [searchOpen, setSearchOpen]   = useState(false)
   const [pendingCustomerId, setPendingCustomerId] = useState(null)
+  const [profile,setProfile] = useState(null)
+  const [accessError,setAccessError] = useState('')
+  const [accessLoading,setAccessLoading] = useState(true)
 
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => {
       setSession(data.session)
       setLoading(false)
-    })
+    }).catch(()=>setLoading(false))
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, s) => setSession(s))
     return () => subscription.unsubscribe()
   }, [])
+
+  useEffect(()=>{
+    let alive=true
+    setProfile(null);setAccessError('');setAccessLoading(true);setSearchOpen(false)
+    if(!session){setAccessLoading(false);return}
+    const refresh = async()=>{
+      const {data,error}=await supabase.rpc('crm_my_profile')
+      if(!alive)return
+      if(error){setProfile(null);setAccessError('暂时无法确认账号权限。请联系管理员确认交接设置已启用。')}
+      else if(!data){setProfile(null);setAccessError('此账号未获授权或已被停用，请联系管理员。')}
+      else {setProfile({...data,user_id:session.user.id});setAccessError('')}
+      setAccessLoading(false)
+    }
+    refresh()
+    const timer=setInterval(refresh,60000)
+    return()=>{alive=false;clearInterval(timer)}
+  },[session?.user.id])
+
+  useEffect(()=>{if(profile)setPage(profile.role==='admin'?'crm':'history')},[profile?.role])
+  const navItems=profile?.role==='admin'?NAV_ITEMS:OPERATOR_NAV
+  const activePage=navItems.some(x=>x.key===page)?page:(profile?.role==='admin'?'crm':'history')
 
   // ⌘K / Ctrl+K global shortcut
   useEffect(() => {
     const handler = (e) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
         e.preventDefault()
-        setSearchOpen(true)
+        if(profile?.role==='admin')setSearchOpen(true)
       }
       if (e.key === 'Escape') setSearchOpen(false)
     }
     window.addEventListener('keydown', handler)
     return () => window.removeEventListener('keydown', handler)
-  }, [])
+  }, [profile?.role])
 
   if (loading) return (
     <div style={{ display:'flex', alignItems:'center', justifyContent:'center', height:'100vh', background:'#FAFAFA' }}>
@@ -83,6 +119,8 @@ export default function App() {
   )
 
   if (!session) return <Login />
+  if(accessLoading)return <PageFallback />
+  if(!profile)return <div className="access-block"><h2>账号访问权限</h2><p role="alert">{accessError}</p><button className="btn btn-primary" onClick={()=>window.location.reload()}>重新检查</button><button className="btn btn-ghost" onClick={()=>supabase.auth.signOut()}>退出登录</button></div>
 
   return (
     <div className="app-shell">
@@ -102,7 +140,7 @@ export default function App() {
           variants={{ visible: { transition: { staggerChildren: 0.07 } } }}
           initial="hidden"
           animate="visible">
-          {NAV_ITEMS.map(item => (
+          {navItems.map(item => (
             <motion.button key={item.key}
               variants={{ hidden: { x: -16, opacity: 0 }, visible: { x: 0, opacity: 1, transition: { duration: 0.22, ease: 'easeOut' } } }}
               className={`nav-item ${page === item.key ? 'active' : ''}`}
@@ -126,7 +164,7 @@ export default function App() {
       <div className="app-content">
         {/* Top Bar */}
         <div className="topbar">
-          <div className="topbar-search-wrap" onClick={() => setSearchOpen(true)}>
+          {profile.role==='admin' ? <div className="topbar-search-wrap" onClick={() => setSearchOpen(true)}>
             <span className="topbar-search-icon"><Search size={14} /></span>
             <input
               readOnly
@@ -134,10 +172,10 @@ export default function App() {
               style={{ cursor: 'pointer' }}
             />
             <span className="topbar-kbd">⌘K</span>
-          </div>
+          </div> : <strong style={{fontSize:14}}>K-Cars · 查询与每月更新</strong>}
 
           <div className="topbar-right">
-            <span className="topbar-user">{session.user.email}</span>
+            <span className="topbar-user">{profile.username}</span>
             <button className="btn btn-ghost"
               style={{ fontSize: 11, color: 'var(--text3)', padding: '5px 10px' }}
               onClick={() => supabase.auth.signOut()}>
@@ -150,19 +188,24 @@ export default function App() {
         <div className="page-content">
           <ErrorBoundary>
             <AnimatePresence mode="wait">
-              <motion.div key={page}
+              <motion.div key={activePage}
                 initial={{ opacity: 0, y: 6 }}
                 animate={{ opacity: 1, y: 0 }}
                 exit={{ opacity: 0, y: -6 }}
                 transition={{ duration: 0.18, ease: 'easeInOut' }}
                 style={{ height: '100%' }}>
                 <Suspense fallback={<PageFallback />}>
-                  {page === 'crm'       && <CRM session={session} onNavigate={setPage} pendingCustomerId={pendingCustomerId} onCustomerSelected={() => setPendingCustomerId(null)} />}
-                  {page === 'reminders' && <Reminders />}
-                  {page === 'reports'   && <Reports />}
-                  {page === 'dashboard' && <Dashboard onNavigate={setPage} />}
-                  {page === 'kanban'    && <Kanban onSelectCustomer={(id) => { setPendingCustomerId(id); setPage('crm') }} />}
-                  {page === 'parts'     && <Parts />}
+                  {profile.role==='admin'&&<>
+                    {activePage === 'crm' && <CRM session={session} onNavigate={setPage} pendingCustomerId={pendingCustomerId} onCustomerSelected={() => setPendingCustomerId(null)} />}
+                    {activePage === 'reminders' && <Reminders />}
+                    {activePage === 'reports' && <Reports />}
+                    {activePage === 'dashboard' && <Dashboard onNavigate={setPage} />}
+                    {activePage === 'kanban' && <Kanban onSelectCustomer={(id) => { setPendingCustomerId(id); setPage('crm') }} />}
+                    {activePage === 'parts' && <Parts />}
+                    {activePage === 'accounts' && <Accounts />}
+                  </>}
+                  {activePage === 'history' && <History />}
+                  {(activePage === 'imports'||activePage==='import-history') && <Imports profile={profile} historyOnly={activePage==='import-history'} />}
                 </Suspense>
               </motion.div>
             </AnimatePresence>
@@ -172,7 +215,7 @@ export default function App() {
 
       {/* ── Mobile Bottom Nav ── */}
       <div className="mobile-bottom-nav">
-        {NAV_ITEMS.map(item => (
+        {navItems.map(item => (
           <button key={item.key}
             className={`mobile-nav-item ${page === item.key ? 'active' : ''}`}
             onClick={() => setPage(item.key)}
@@ -184,7 +227,7 @@ export default function App() {
       </div>
 
       {/* ── Global Search Overlay ── */}
-      {searchOpen && (
+      {searchOpen && profile.role==='admin' && (
         <GlobalSearch
           onClose={() => setSearchOpen(false)}
           onNavigate={(p, customerId) => {

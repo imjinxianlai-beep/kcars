@@ -1,0 +1,7 @@
+[functions.crm-account]
+verify_jwt = false
+# The function validates the access token with Auth.getUser and checks crm_my_role.
+
+[functions.crm-login]
+verify_jwt = false
+# Public login endpoint: password verification via Auth plus per-username rate limits.
