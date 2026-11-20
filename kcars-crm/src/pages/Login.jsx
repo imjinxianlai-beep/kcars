@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { supabase } from '../lib/supabase'
+import { loginEmail } from '../lib/loginIdentity'
 
 export default function Login() {
   const [email, setEmail] = useState('')
@@ -10,9 +11,23 @@ export default function Login() {
   const login = async (e) => {
     e.preventDefault()
     setLoading(true); setError('')
-    const { error } = await supabase.auth.signInWithPassword({ email, password })
-    if (error) setError(error.message)
-    setLoading(false)
+    try {
+      loginEmail(email) // Validate username syntax; retain old owner email login during rollout.
+      if(email.includes('@')) {
+        const {error}=await supabase.auth.signInWithPassword({email:email.trim(),password})
+        if(error)throw new Error('用户名或密码不正确，或暂时无法登录。请重试。')
+      } else {
+        const {data,error}=await supabase.functions.invoke('crm-login',{body:{username:email.trim(),password}})
+        if(error||data?.error) {
+          let message=data?.error
+          try {message=message||(await error?.context?.json())?.error}catch{}
+          throw new Error(message||'暂时无法登录，请重试或联系管理员。')
+        }
+        const {error:sessionError}=await supabase.auth.setSession(data)
+        if(sessionError)throw new Error('无法保存登录状态，请重试')
+      }
+    } catch (e) { setError(e.message) }
+    finally { setLoading(false) }
   }
 
   return (
@@ -33,13 +48,13 @@ export default function Login() {
 
         <form onSubmit={login}>
           <div className="form-row">
-            <label>Email 邮箱</label>
-            <input type="email" value={email} onChange={e => setEmail(e.target.value)}
-              placeholder="your@email.com" required autoComplete="email" />
+            <label htmlFor="login-username">Username 用户名</label>
+            <input id="login-username" type="text" value={email} onChange={e => setEmail(e.target.value)}
+              placeholder="输入用户名" required autoComplete="username" autoCapitalize="none" />
           </div>
           <div className="form-row">
-            <label>Password 密码</label>
-            <input type="password" value={password} onChange={e => setPassword(e.target.value)}
+            <label htmlFor="login-password">Password 密码</label>
+            <input id="login-password" type="password" value={password} onChange={e => setPassword(e.target.value)}
               placeholder="••••••••" required autoComplete="current-password" />
           </div>
           {error && <div style={{ color: '#e74c3c', fontSize: 12, marginBottom: 12 }}>{error}</div>}
