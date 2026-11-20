@@ -1,3 +1,4 @@
+import { t, useLanguage, LanguageSwitch } from './lib/language'
 import { useState, useEffect, useRef, useCallback, Suspense, lazy, Component } from 'react'
 import { LayoutDashboard, Users, Bell, BarChart2, Columns3, Search, FileText, Wrench, User, X, AlertTriangle, Phone, Car } from 'lucide-react'
 import { supabase } from './lib/supabase'
@@ -59,6 +60,7 @@ const OPERATOR_NAV = [
 ]
 
 export default function App() {
+  useLanguage()
   const [session, setSession]         = useState(null)
   const [loading, setLoading]         = useState(true)
   const [page, setPage]               = useState('crm')
@@ -85,8 +87,8 @@ export default function App() {
     const refresh = async()=>{
       const {data,error}=await supabase.rpc('crm_my_profile')
       if(!alive)return
-      if(error){setProfile(null);setAccessError('暂时无法确认账号权限。请联系管理员确认交接设置已启用。')}
-      else if(!data){setProfile(null);setAccessError('此账号未获授权或已被停用，请联系管理员。')}
+      if(error){setProfile(null);setAccessError(t("暂时无法确认账号权限。请联系管理员确认交接设置已启用。"))}
+      else if(!data){setProfile(null);setAccessError(t("此账号未获授权或已被停用，请联系管理员。"))}
       else {setProfile({...data,user_id:session.user.id});setAccessError('')}
       setAccessLoading(false)
     }
@@ -120,7 +122,7 @@ export default function App() {
 
   if (!session) return <Login />
   if(accessLoading)return <PageFallback />
-  if(!profile)return <div className="access-block"><h2>账号访问权限</h2><p role="alert">{accessError}</p><button className="btn btn-primary" onClick={()=>window.location.reload()}>重新检查</button><button className="btn btn-ghost" onClick={()=>supabase.auth.signOut()}>退出登录</button></div>
+  if(!profile)return <div className="access-block"><h2>{t("账号访问权限")}</h2><p role="alert">{accessError}</p><button className="btn btn-primary" onClick={()=>window.location.reload()}>{t("重新检查")}</button><button className="btn btn-ghost" onClick={()=>supabase.auth.signOut()}>{t("退出登录")}</button></div>
 
   return (
     <div className="app-shell">
@@ -149,14 +151,14 @@ export default function App() {
               aria-current={page === item.key ? 'page' : undefined}
               whileTap={{ scale: 0.97 }}>
               <span className="nav-icon"><item.Icon size={16} /></span>
-              {!navCollapsed && <span className="nav-label">{item.label}</span>}
+              {!navCollapsed && <span className="nav-label">{t(item.label)}</span>}
             </motion.button>
           ))}
         </motion.div>
 
         <div className="nav-collapse-btn" onClick={() => setNavCollapsed(c => !c)}>
           <span>{navCollapsed ? '→' : '←'}</span>
-          {!navCollapsed && <span>Collapse 收起</span>}
+          {!navCollapsed && <span>{t("Collapse 收起")}</span>}
         </div>
       </nav>
 
@@ -168,13 +170,13 @@ export default function App() {
             <span className="topbar-search-icon"><Search size={14} /></span>
             <input
               readOnly
-              placeholder="Search customers, plates, invoices... 搜索客户、车牌、发票"
+              placeholder={t("Search customers, plates, invoices... 搜索客户、车牌、发票")}
               style={{ cursor: 'pointer' }}
             />
             <span className="topbar-kbd">⌘K</span>
-          </div> : <strong style={{fontSize:14}}>K-Cars · 查询与每月更新</strong>}
+          </div> : <strong style={{fontSize:14}}>{t("K-Cars · 查询与每月更新")}</strong>}
 
-          <div className="topbar-right">
+          <div className="topbar-right"><LanguageSwitch />
             <span className="topbar-user">{profile.username}</span>
             <button className="btn btn-ghost"
               style={{ fontSize: 11, color: 'var(--text3)', padding: '5px 10px' }}
@@ -310,7 +312,7 @@ function GlobalSearch({ onClose, onNavigate }) {
             ref={inputRef}
             value={query}
             onChange={e => setQuery(e.target.value)}
-            placeholder="Search customers, plates, invoices, services... 搜索"
+            placeholder={t("Search customers, plates, invoices, services... 搜索")}
             onKeyDown={e => e.key === 'Escape' && onClose()}
           />
           {loading && <div style={{ width:16, height:16, border:'2px solid var(--border)', borderTopColor:'var(--orange)', borderRadius:'50%', animation:'spin .6s linear infinite', flexShrink:0 }} />}
@@ -322,7 +324,7 @@ function GlobalSearch({ onClose, onNavigate }) {
             <div style={{ padding:'32px 18px', textAlign:'center', color:'var(--text3)' }}>
               <Search size={32} style={{ margin:'0 auto 10px', display:'block' }} />
               <div style={{ fontSize:14 }}>Type to search customers, plates, invoices...</div>
-              <div style={{ fontSize:12, marginTop:4 }}>搜索客户名、车牌、车型、发票号、维修项目</div>
+              <div style={{ fontSize:12, marginTop:4 }}>{t("搜索客户名、车牌、车型、发票号、维修项目")}</div>
             </div>
           )}
 
@@ -335,7 +337,7 @@ function GlobalSearch({ onClose, onNavigate }) {
 
           {results && results.customers.length > 0 && (
             <>
-              <div className="search-group-label" style={{ display:'flex', alignItems:'center', gap:5 }}><Users size={10} /> Customers 客户</div>
+              <div className="search-group-label" style={{ display:'flex', alignItems:'center', gap:5 }}><Users size={10} />{t("Customers 客户")}</div>
               {results.customers.map(c => (
                 <div key={c.id} className="search-result-item"
                   onClick={() => onNavigate('crm', c.id)}>
@@ -353,7 +355,7 @@ function GlobalSearch({ onClose, onNavigate }) {
 
           {results && results.vehicles?.length > 0 && (
             <>
-              <div className="search-group-label" style={{ display:'flex', alignItems:'center', gap:5, marginTop: results.customers.length ? 8 : 0 }}><Car size={10} /> Vehicles 车辆</div>
+              <div className="search-group-label" style={{ display:'flex', alignItems:'center', gap:5, marginTop: results.customers.length ? 8 : 0 }}><Car size={10} />{t("Vehicles 车辆")}</div>
               {results.vehicles.map(v => (
                 <div key={v.id} className="search-result-item"
                   onClick={() => onNavigate('crm', v.customer_id)}>
@@ -375,7 +377,7 @@ function GlobalSearch({ onClose, onNavigate }) {
 
           {results && results.invoices.length > 0 && (
             <>
-              <div className="search-group-label" style={{ marginTop:8, display:'flex', alignItems:'center', gap:5 }}><FileText size={10} /> Invoices 发票</div>
+              <div className="search-group-label" style={{ marginTop:8, display:'flex', alignItems:'center', gap:5 }}><FileText size={10} />{t("Invoices 发票")}</div>
               {results.invoices.map(inv => (
                 <div key={inv.id} className="search-result-item"
                   onClick={() => onNavigate('crm', inv.customer_id)}>
@@ -396,7 +398,7 @@ function GlobalSearch({ onClose, onNavigate }) {
 
           {results && results.items.length > 0 && (
             <>
-              <div className="search-group-label" style={{ marginTop:8, display:'flex', alignItems:'center', gap:5 }}><Wrench size={10} /> Services 维修项目</div>
+              <div className="search-group-label" style={{ marginTop:8, display:'flex', alignItems:'center', gap:5 }}><Wrench size={10} />{t("Services 维修项目")}</div>
               {results.items.map(it => (
                 <div key={it.id} className="search-result-item"
                   onClick={() => onNavigate('crm', it.invoices?.customer_id)}>
@@ -415,8 +417,7 @@ function GlobalSearch({ onClose, onNavigate }) {
 
         {results && total > 0 && (
           <div style={{ padding:'8px 18px', borderTop:'1px solid var(--border)', fontSize:11, color:'var(--text3)', flexShrink:0 }}>
-            {total} results · Click to open customer detail 点击跳转到客户详情
-          </div>
+            {total}{t("results · Click to open customer detail 点击跳转到客户详情")}</div>
         )}
       </div>
     </div>
